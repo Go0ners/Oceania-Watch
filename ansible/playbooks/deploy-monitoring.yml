@@ -1,0 +1,40 @@
+---
+- name: Déployer la stack de monitoring complète
+  hosts: oceania
+  become: yes
+
+  pre_tasks:
+    - name: Afficher les informations de déploiement
+      ansible.builtin.debug:
+        msg: "Déploiement de la stack monitoring sur {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: Vérifier que Docker est installé
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Afficher la version de Docker
+      ansible.builtin.debug:
+        msg: "{{ docker_version.stdout }}"
+
+  roles:
+    - monitoring-stack
+
+  post_tasks:
+    - name: Vérifier l'état des conteneurs
+      community.docker.docker_container_info:
+        name: "{{ item }}"
+      loop:
+        - prometheus
+        - grafana
+        - alertmanager
+        - node-exporter
+        - cadvisor
+        - loki
+      register: containers_info
+
+    - name: Afficher l'état des conteneurs
+      ansible.builtin.debug:
+        msg: "{{ item.container.Name }}: {{ item.container.State.Status }}"
+      loop: "{{ containers_info.results }}"
+      when: item.exists

@@ -1,0 +1,70 @@
+---
+# Exemple de configuration pour la stack monitoring
+# Copier ce fichier vers monitoring.yml et ajuster les valeurs
+
+#################################################
+# Versions des composants
+#################################################
+prometheus_version: "v2.48.0"
+grafana_version: "10.2.2"
+alertmanager_version: "v0.26.0"
+node_exporter_version: "v1.7.0"
+cadvisor_version: "v0.47.2"
+loki_version: "2.9.3"
+
+#################################################
+# Configuration Grafana
+#################################################
+grafana_admin_user: "admin"
+# IMPORTANT: Utiliser Ansible Vault pour le mot de passe !
+# grafana_admin_password: "{{ vault_grafana_admin_password }}"
+grafana_admin_password: "changeme"  # À CHANGER IMMÉDIATEMENT !
+
+# URL racine Grafana (ajuster selon votre domaine)
+grafana_root_url: "http://{{ ansible_host }}:3000"
+
+# Plugins Grafana à installer (séparés par des virgules)
+# Exemples: grafana-clock-panel,grafana-piechart-panel
+grafana_plugins: ""
+
+#################################################
+# Configuration Prometheus
+#################################################
+# Intervalle de collecte des métriques
+prometheus_scrape_interval: "15s"
+prometheus_evaluation_interval: "15s"
+
+# Durée de rétention des données
+# Exemples: 7d, 15d, 30d, 90d
+prometheus_retention: "15d"
+
+#################################################
+# Configuration Alertmanager
+#################################################
+# Webhook pour les alertes (Slack, Discord, etc.)
+# Slack: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+# Discord: https://discord.com/api/webhooks/YOUR/WEBHOOK
+alertmanager_webhook_url: "http://localhost:5001/"
+alertmanager_critical_webhook_url: "http://localhost:5001/critical"
+
+#################################################
+# Configuration Loki
+#################################################
+# Durée de rétention des logs
+# Exemples: 72h (3 jours), 168h (7 jours), 336h (14 jours)
+loki_retention_period: "168h"
+
+#################################################
+# Ports (modifier si conflits)
+#################################################
+prometheus_port: 9090
+grafana_port: 3000
+alertmanager_port: 9093
+node_exporter_port: 9100
+cadvisor_port: 8080
+loki_port: 3100
+
+#################################################
+# Répertoire d'installation
+#################################################
+monitoring_stack_dir: "/opt/monitoring"

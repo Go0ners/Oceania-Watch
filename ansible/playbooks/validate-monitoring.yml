@@ -1,0 +1,139 @@
+---
+- name: Valider la stack de monitoring
+  hosts: oceania
+  become: yes
+
+  vars:
+    monitoring_stack_dir: "/opt/monitoring"
+
+  tasks:
+    - name: Vérifier que tous les conteneurs sont en cours d'exécution
+      community.docker.docker_container_info:
+        name: "{{ item }}"
+      loop:
+        - prometheus
+        - grafana
+        - alertmanager
+        - node-exporter
+        - cadvisor
+        - loki
+      register: containers_status
+      tags:
+        - validate
+
+    - name: Confirmer que tous les conteneurs sont running
+      ansible.builtin.assert:
+        that:
+          - item.exists
+          - item.container.State.Status == "running"
+        fail_msg: "Le conteneur {{ item.container.Name }} n'est pas en cours d'exécution"
+        success_msg: "✓ {{ item.container.Name }} est running"
+      loop: "{{ containers_status.results }}"
+      tags:
+        - validate
+
+    - name: Tester l'API Prometheus
+      ansible.builtin.uri:
+        url: "http://localhost:9090/-/healthy"
+        status_code: 200
+      register: prometheus_health
+      tags:
+        - validate
+
+    - name: Tester l'API Grafana
+      ansible.builtin.uri:
+        url: "http://localhost:3000/api/health"
+        status_code: 200
+      register: grafana_health
+      tags:
+        - validate
+
+    - name: Tester l'API Alertmanager
+      ansible.builtin.uri:
+        url: "http://localhost:9093/-/healthy"
+        status_code: 200
+      register: alertmanager_health
+      tags:
+        - validate
+
+    - name: Vérifier les targets Prometheus
+      ansible.builtin.uri:
+        url: "http://localhost:9090/api/v1/targets"
+        return_content: yes
+      register: prometheus_targets
+      tags:
+        - validate
+
+    - name: Compter les targets actives
+      ansible.builtin.set_fact:
+        active_targets: "{{ prometheus_targets.json.data.activeTargets | length }}"
+      tags:
+        - validate
+
+    - name: Confirmer que des targets sont configurées
+      ansible.builtin.assert:
+        that:
+          - active_targets | int > 0
+        fail_msg: "Aucune target active dans Prometheus"
+        success_msg: "✓ {{ active_targets }} target(s) active(s) dans Prometheus"
+      tags:
+        - validate
+
+    - name: Vérifier les datasources Grafana
+      ansible.builtin.uri:
+        url: "http://localhost:3000/api/datasources"
+        user: "{{ grafana_admin_user | default('admin') }}"
+        password: "{{ grafana_admin_password | default('changeme') }}"
+        force_basic_auth: yes
+        return_content: yes
+      register: grafana_datasources
+      tags:
+        - validate
+
+    - name: Confirmer que les datasources sont configurées
+      ansible.builtin.assert:
+        that:
+          - grafana_datasources.json | length >= 2
+        fail_msg: "Datasources Grafana non configurées"
+        success_msg: "✓ {{ grafana_datasources.json | length }} datasource(s) configurée(s)"
+      tags:
+        - validate
+
+    - name: Vérifier les métriques Node Exporter
+      ansible.builtin.uri:
+        url: "http://localhost:9100/metrics"
+        status_code: 200
+      register: node_exporter_metrics
+      tags:
+        - validate
+
+    - name: Vérifier les métriques cAdvisor
+      ansible.builtin.uri:
+        url: "http://localhost:8080/metrics"
+        status_code: 200
+      register: cadvisor_metrics
+      tags:
+        - validate
+
+    - name: Afficher le résumé de validation
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "✅ VALIDATION RÉUSSIE - Stack Monitoring"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "Services actifs:"
+          - "  ✓ Prometheus ({{ active_targets }} targets)"
+          - "  ✓ Grafana ({{ grafana_datasources.json | length }} datasources)"
+          - "  ✓ Alertmanager"
+          - "  ✓ Node Exporter"
+          - "  ✓ cAdvisor"
+          - "  ✓ Loki"
+          - ""
+          - "URLs d'accès:"
+          - "  Prometheus: http://{{ ansible_host }}:9090"
+          - "  Grafana: http://{{ ansible_host }}:3000"
+          - "  Alertmanager: http://{{ ansible_host }}:9093"
+          - ""
+      tags:
+        - validate

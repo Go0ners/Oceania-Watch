@@ -1,0 +1,102 @@
+---
+- name: Créer le répertoire de la stack monitoring
+  ansible.builtin.file:
+    path: "{{ monitoring_stack_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - monitoring
+
+- name: Créer les sous-répertoires pour chaque service
+  ansible.builtin.file:
+    path: "{{ monitoring_stack_dir }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - prometheus
+    - prometheus/rules
+    - grafana
+    - grafana/provisioning
+    - grafana/provisioning/datasources
+    - grafana/provisioning/dashboards
+    - grafana/dashboards
+    - alertmanager
+    - node-exporter
+    - cadvisor
+    - loki
+  tags:
+    - monitoring
+
+- name: Copier les fichiers Docker Compose
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ monitoring_stack_dir }}/{{ item.dest }}"
+    mode: '0644'
+  loop:
+    - { src: 'files/docker-compose.yml', dest: 'docker-compose.yml' }
+    - { src: 'files/prometheus/docker-compose.yml', dest: 'prometheus/docker-compose.yml' }
+    - { src: 'files/grafana/docker-compose.yml', dest: 'grafana/docker-compose.yml' }
+    - { src: 'files/alertmanager/docker-compose.yml', dest: 'alertmanager/docker-compose.yml' }
+    - { src: 'files/node-exporter/docker-compose.yml', dest: 'node-exporter/docker-compose.yml' }
+    - { src: 'files/cadvisor/docker-compose.yml', dest: 'cadvisor/docker-compose.yml' }
+    - { src: 'files/loki/docker-compose.yml', dest: 'loki/docker-compose.yml' }
+  tags:
+    - monitoring
+
+- name: Générer les fichiers de configuration depuis les templates
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ monitoring_stack_dir }}/{{ item.dest }}"
+    mode: '0644'
+  loop:
+    - { src: 'prometheus.yml.j2', dest: 'prometheus/prometheus.yml' }
+    - { src: 'alert-rules.yml.j2', dest: 'prometheus/rules/alerts.yml' }
+    - { src: 'alertmanager.yml.j2', dest: 'alertmanager/alertmanager.yml' }
+    - { src: 'loki-config.yml.j2', dest: 'loki/loki-config.yml' }
+    - { src: 'grafana-datasource.yml.j2', dest: 'grafana/provisioning/datasources/datasource.yml' }
+    - { src: 'grafana-dashboards.yml.j2', dest: 'grafana/provisioning/dashboards/dashboards.yml' }
+  notify: Redémarrer la stack monitoring
+  tags:
+    - monitoring
+
+- name: Démarrer la stack monitoring
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_stack_dir }}"
+    state: present
+  tags:
+    - monitoring
+
+- name: Attendre que Prometheus soit prêt
+  ansible.builtin.uri:
+    url: "http://localhost:{{ prometheus_port }}/-/ready"
+    status_code: 200
+  register: prometheus_ready
+  until: prometheus_ready.status == 200
+  retries: 30
+  delay: 2
+  tags:
+    - monitoring
+
+- name: Attendre que Grafana soit prêt
+  ansible.builtin.uri:
+    url: "http://localhost:{{ grafana_port }}/api/health"
+    status_code: 200
+  register: grafana_ready
+  until: grafana_ready.status == 200
+  retries: 30
+  delay: 2
+  tags:
+    - monitoring
+
+- name: Afficher les URLs d'accès
+  ansible.builtin.debug:
+    msg:
+      - "✅ Stack monitoring déployée avec succès"
+      - "Prometheus: http://{{ ansible_host }}:{{ prometheus_port }}"
+      - "Grafana: http://{{ ansible_host }}:{{ grafana_port }} ({{ grafana_admin_user }}/{{ grafana_admin_password }})"
+      - "Alertmanager: http://{{ ansible_host }}:{{ alertmanager_port }}"
+      - "Node Exporter: http://{{ ansible_host }}:{{ node_exporter_port }}/metrics"
+      - "cAdvisor: http://{{ ansible_host }}:{{ cadvisor_port }}"
+      - "Loki: http://{{ ansible_host }}:{{ loki_port }}"
+  tags:
+    - monitoring

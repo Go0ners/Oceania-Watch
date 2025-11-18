@@ -1,0 +1,5 @@
+---
+- name: Redémarrer la stack monitoring
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_stack_dir }}"
+    state: restarted

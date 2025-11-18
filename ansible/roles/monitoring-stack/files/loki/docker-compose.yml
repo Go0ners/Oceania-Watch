@@ -1,0 +1,12 @@
+services:
+  loki:
+    image: grafana/loki:{{ loki_version | default('latest') }}
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "{{ loki_port | default(3100) }}:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    user: "{{ loki_user_id | default('10001') }}:{{ loki_group_id | default('10001') }}"

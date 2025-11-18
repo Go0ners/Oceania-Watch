@@ -1,0 +1,14 @@
+services:
+  alertmanager:
+    image: prom/alertmanager:{{ alertmanager_version | default('latest') }}
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "{{ alertmanager_port | default(9093) }}:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    user: "{{ alertmanager_user_id | default('65534') }}:{{ alertmanager_group_id | default('65534') }}"

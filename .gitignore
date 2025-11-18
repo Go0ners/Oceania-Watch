@@ -61,11 +61,15 @@ vault_pass.txt
 ansible/roles/downloaded/
 ansible/collections/
 
+# Monitoring stack - fichiers générés
+ansible/inventory/group_vars/monitoring.yml
+ansible/inventory/group_vars/vault.yml
+
 #################################################
 # Claude
 #################################################
 # Local .claude directories
-**/.claude/*
+.claude/
 
 #################################################
 # SSH Keys (CRITIQUE - NE JAMAIS COMMITER)
@@ -236,3 +240,12 @@ docs/_build/
 # NOTES.md
 # TODO.txt
 # notes/
+
+#################################################
+# Monitoring Stack
+#################################################
+# Données de monitoring (volumes Docker)
+monitoring/*-data/
+
+# Dashboards Grafana personnalisés (optionnel)
+# monitoring/grafana/dashboards/*.json

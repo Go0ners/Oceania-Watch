@@ -1,86 +1,130 @@
 # OceaniaWatch - Infrastructure as Code
 
-**Déploiement automatisé d'infrastructure AWS avec Terraform et Ansible**
+**Déploiement automatisé d'infrastructure AWS avec Terraform, Ansible et Stack Monitoring**
 
 [![Infrastructure](https://img.shields.io/badge/Infrastructure-AWS-orange)](https://aws.amazon.com)
 [![IaC](https://img.shields.io/badge/IaC-Terraform-purple)](https://terraform.io)
 [![Config](https://img.shields.io/badge/Config-Ansible-red)](https://ansible.com)
+[![Monitoring](https://img.shields.io/badge/Monitoring-Prometheus-orange)](https://prometheus.io)
+[![Visualization](https://img.shields.io/badge/Visualization-Grafana-yellow)](https://grafana.com)
 [![Status](https://img.shields.io/badge/Status-Production_Ready-green)](.)
+
+---
+
+## 📋 Table des Matières
+
+- [Description](#-description)
+- [Architecture](#️-architecture)
+- [Stack Monitoring](#-stack-monitoring)
+- [Prérequis](#️-prérequis)
+- [Installation et Déploiement](#-installation-et-déploiement)
+- [Commandes Disponibles](#-commandes-disponibles)
+- [Gestion du Cycle de Vie](#-gestion-du-cycle-de-vie)
+- [Monitoring et Observabilité](#-monitoring-et-observabilité)
+- [Variables de Configuration](#-variables-de-configuration)
+- [Sécurité](#-sécurité)
+- [Tests](#-tests)
+- [Coûts AWS](#-coûts-aws)
+- [Troubleshooting](#-troubleshooting)
 
 ---
 
 ## 📋 Description
 
-**OceaniaWatch** est une solution Infrastructure as Code (IaC) complète permettant le déploiement automatisé d'une infrastructure AWS sécurisée et évolutive. Le projet combine Terraform pour le provisioning d'infrastructure et Ansible pour la configuration post-déploiement.
+**OceaniaWatch** est une solution Infrastructure as Code (IaC) complète permettant le déploiement automatisé d'une infrastructure AWS sécurisée et évolutive avec monitoring intégré. Le projet combine :
+
+- **Terraform** pour le provisioning d'infrastructure
+- **Ansible** pour la configuration post-déploiement
+- **Docker Compose** pour l'orchestration des services
+- **Stack Monitoring** complète (Prometheus, Grafana, Alertmanager, etc.)
 
 ### Objectifs
 
-- **Automatisation complète** du cycle de vie infrastructure (déploiement, configuration, destruction)
-- **Reproductibilité** des environnements (dev, staging, prod)
-- **Sécurité** par défaut (chiffrement, clés SSH, state distant)
-- **Simplicité d'utilisation** via un script unifié (`oceania`)
+- ✅ **Automatisation complète** du cycle de vie infrastructure
+- ✅ **Reproductibilité** des environnements (dev, staging, prod)
+- ✅ **Sécurité** par défaut (chiffrement, clés SSH, state distant)
+- ✅ **Observabilité** complète avec métriques, logs et alertes
+- ✅ **Simplicité d'utilisation** via un script unifié (`oceania`)
+
+### Composants Principaux
+
+| Composant | Technologie | Description |
+|-----------|-------------|-------------|
+| **Infrastructure** | Terraform + AWS | EC2, VPC, Security Groups, EBS |
+| **Configuration** | Ansible | Docker, outils système, utilisateurs |
+| **Monitoring** | Prometheus + Grafana | Métriques, visualisation, alertes |
+| **Logs** | Loki | Agrégation et analyse de logs |
+| **Orchestration** | Script Bash | Gestion unifiée du cycle de vie |
 
 ---
 
 ## 🏗️ Architecture
 
-### Vue d'ensemble
+### Vue d'ensemble Infrastructure + Monitoring
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         AWS Cloud                           │
-│                         Region: us-east-1                   │
-│                                                             │
-│  ┌────────────────────┐                                     │
-│  │  Backend Terraform │                                     │
-│  │  ┌──────────────┐  │                                     │
-│  │  │ S3 Bucket    │  │  State Storage + Versioning         │
-│  │  │ + Locking    │  │                                     │
-│  │  └──────────────┘  │                                     │
-│  │  ┌──────────────┐  │                                     │
-│  │  │ DynamoDB     │  │  Compatibilité                      │
-│  │  └──────────────┘  │                                     │
-│  └────────────────────┘                                     │
-│           │                                                 │
-│           │ Remote State                                    │
-│           ▼                                                 │
-│  ┌────────────────────────────────────────────────────┐     │
-│  │  VPC (Default)                                     │     │
-│  │                                                    │     │
-│  │  ┌───────────────────────────────────────────┐     │     │
-│  │  │  Public Subnet                            │     │     │
-│  │  │                                           │     │     │
-│  │  │  ┌──────────────────────────────────┐     │     │     │
-│  │  │  │  EC2 Instance                    │     │     │     │
-│  │  │  │  - Amazon Linux 2023             │     │     │     │
-│  │  │  │  - t3.large (2 vCPU, 8GB RAM)    │     │     │     │
-│  │  │  │  - Docker 29.0.0                 │     │     │     │
-│  │  │  │  - Docker Compose 2.40.3         │     │     │     │
-│  │  │  │  - 100GB EBS gp3 (encrypted)     │     │     │     │
-│  │  │  └──────────────────────────────────┘     │     │     │
-│  │  │           │                               │     │     │
-│  │  │           │                               │     │     │
-│  │  │  ┌────────▼─────────┐                     │     │     │
-│  │  │  │  Elastic IP      │  44.x.x.x           │     │     │
-│  │  │  └──────────────────┘                     │     │     │
-│  │  │           │                               │     │     │
-│  │  │  ┌────────▼─────────┐                     │     │     │
-│  │  │  │  Security Group  │                     │     │     │
-│  │  │  │  - SSH: 22       │  Custom IPs         │     │     │
-│  │  │  │  - HTTP: 80      │  0.0.0.0/0          │     │     │
-│  │  │  │  - HTTPS: 443    │  0.0.0.0/0          │     │     │
-│  │  │  └──────────────────┘                     │     │     │
-│  │  └───────────────────────────────────────────┘     │     │
-│  └────────────────────────────────────────────────────┘     │
-│                                                             │
-│  ┌────────────────┐                                         │
-│  │  SSH Keys      │  ED25519 (auto-generated)               │
-│  │  ~/.ssh/oceania│                                         │
-│  └────────────────┘                                         │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         AWS Cloud (us-east-1)                       │
+│                                                                     │
+│  ┌────────────────────┐                                             │
+│  │  Backend Terraform │                                             │
+│  │  ┌──────────────┐  │  State Storage + Versioning                │
+│  │  │ S3 + DynamoDB│  │                                             │
+│  │  └──────────────┘  │                                             │
+│  └────────────────────┘                                             │
+│           │                                                         │
+│           │ Remote State                                            │
+│           ▼                                                         │
+│  ┌────────────────────────────────────────────────────────────┐     │
+│  │  VPC (Default)                                             │     │
+│  │                                                            │     │
+│  │  ┌──────────────────────────────────────────────────┐      │     │
+│  │  │  EC2 Instance (t3.large)                         │      │     │
+│  │  │  - Amazon Linux 2023                             │      │     │
+│  │  │  - Docker 29.0.0 + Compose 2.40.3                │      │     │
+│  │  │  - 100GB EBS gp3 (encrypted)                     │      │     │
+│  │  │                                                  │      │     │
+│  │  │  ┌────────────────────────────────────────┐      │      │     │
+│  │  │  │  Stack Monitoring (Docker Compose)     │      │      │     │
+│  │  │  │                                        │      │      │     │
+│  │  │  │  ┌──────────┐  ┌──────────┐           │      │      │     │
+│  │  │  │  │Prometheus│  │ Grafana  │           │      │      │     │
+│  │  │  │  │  :9090   │  │  :3000   │           │      │      │     │
+│  │  │  │  └────┬─────┘  └────┬─────┘           │      │      │     │
+│  │  │  │       │             │                 │      │      │     │
+│  │  │  │  ┌────▼─────┐  ┌────▼─────┐           │      │      │     │
+│  │  │  │  │  Node    │  │  Loki    │           │      │      │     │
+│  │  │  │  │ Exporter │  │  :3100   │           │      │      │     │
+│  │  │  │  │  :9100   │  └──────────┘           │      │      │     │
+│  │  │  │  └──────────┘                         │      │      │     │
+│  │  │  │  ┌──────────┐  ┌──────────┐           │      │      │     │
+│  │  │  │  │cAdvisor  │  │Alertmgr  │           │      │      │     │
+│  │  │  │  │  :8080   │  │  :9093   │           │      │      │     │
+│  │  │  │  └──────────┘  └──────────┘           │      │      │     │
+│  │  │  └────────────────────────────────────────┘      │      │     │
+│  │  │                                                  │      │     │
+│  │  │  ┌────────────────┐                              │      │     │
+│  │  │  │  Elastic IP    │  44.x.x.x                    │      │     │
+│  │  │  └────────────────┘                              │      │     │
+│  │  │  ┌────────────────┐                              │      │     │
+│  │  │  │ Security Group │                              │      │     │
+│  │  │  │ - SSH: 22      │  Custom IPs                  │      │     │
+│  │  │  │ - HTTP: 80     │  0.0.0.0/0                   │      │     │
+│  │  │  │ - HTTPS: 443   │  0.0.0.0/0                   │      │     │
+│  │  │  │ - Grafana:3000 │  Custom IPs                  │      │     │
+│  │  │  │ - Prom: 9090   │  Custom IPs                  │      │     │
+│  │  │  └────────────────┘                              │      │     │
+│  │  └──────────────────────────────────────────────────┘      │     │
+│  └────────────────────────────────────────────────────────────┘     │
+│                                                                     │
+│  ┌────────────────┐                                                 │
+│  │  SSH Keys      │  ED25519 (auto-generated)                       │
+│  │  ~/.ssh/oceania│                                                 │
+│  └────────────────┘                                                 │
+└─────────────────────────────────────────────────────────────────────┘
 
         │
-        │ SSH Connection
+        │ SSH + HTTPS
         ▼
     ┌────────────┐
     │   Local    │
@@ -88,157 +132,146 @@
     └────────────┘
 ```
 
-### Flux de Déploiement
+### Flux de Déploiement Complet
+
+```
+┌──────────────────┐
+│ ./oceania        │
+│   deploy-all     │
+└────────┬─────────┘
+         │
+         ▼
+┌────────────────────────────────────────┐
+│  Étape 1/4: Backend Terraform          │
+│  ├─ Création bucket S3                 │
+│  ├─ Activation versioning              │
+│  ├─ Configuration S3 locking           │
+│  └─ Création table DynamoDB            │
+└────────┬───────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────┐
+│  Étape 2/4: Infrastructure EC2         │
+│  ├─ Génération clés SSH ED25519        │
+│  ├─ Création instance EC2              │
+│  ├─ Allocation Elastic IP              │
+│  ├─ Configuration Security Group       │
+│  └─ Attachement volume EBS             │
+└────────┬───────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────┐
+│  Étape 3/4: Configuration Ansible      │
+│  ├─ Installation Docker 29.0.0         │
+│  ├─ Installation Docker Compose        │
+│  ├─ Installation outils système        │
+│  ├─ Configuration utilisateurs         │
+│  └─ Validation complète                │
+└────────┬───────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────┐
+│  Étape 4/4: Stack Monitoring           │
+│  ├─ Déploiement Prometheus             │
+│  ├─ Déploiement Grafana                │
+│  ├─ Déploiement Alertmanager           │
+│  ├─ Déploiement Node Exporter          │
+│  ├─ Déploiement cAdvisor               │
+│  ├─ Déploiement Loki                   │
+│  └─ Validation complète                │
+└────────────────────────────────────────┘
+```
+
+---
+
+## 📊 Stack Monitoring
+
+### Composants de Monitoring
+
+| Composant | Version | Port | Description |
+|-----------|---------|------|-------------|
+| **Prometheus** | 2.48.0 | 9090 | Collecte et stockage des métriques |
+| **Grafana** | 10.2.2 | 3000 | Visualisation et dashboards |
+| **Alertmanager** | 0.26.0 | 9093 | Gestion des alertes |
+| **Node Exporter** | 1.7.0 | 9100 | Métriques système (CPU, RAM, Disk) |
+| **cAdvisor** | 0.47.2 | 8080 | Métriques des conteneurs Docker |
+| **Loki** | 2.9.3 | 3100 | Agrégation de logs |
+
+### Architecture Monitoring
 
 ```
 ┌──────────────┐
-│ ./oceania    │
-│   deploy     │
+│   Système    │
+│   (Node)     │
 └──────┬───────┘
-       │
+       │ métriques
        ▼
-┌──────────────────────────────────────┐
-│  Étape 1: Backend Terraform          │
-│  ├─ Création bucket S3               │
-│  ├─ Activation versioning            │
-│  ├─ Configuration S3 locking         │
-│  └─ Création table DynamoDB          │
-└──────────┬───────────────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────┐
-│  Étape 2: Infrastructure EC2         │
-│  ├─ Génération clés SSH ED25519      │
-│  ├─ Création instance EC2            │
-│  ├─ Allocation Elastic IP            │
-│  ├─ Configuration Security Group     │
-│  └─ Attachement volume EBS           │
-└──────────┬───────────────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────┐
-│  Étape 3: Configuration Ansible      │
-│  ├─ Installation Docker 29.0.0       │
-│  ├─ Installation Docker Compose      │
-│  ├─ Installation outils système      │
-│  ├─ Configuration utilisateurs       │
-│  └─ Validation complète              │
-└──────────────────────────────────────┘
+┌──────────────┐     ┌──────────────┐
+│Node Exporter │     │  Conteneurs  │
+│    :9100     │     │   Docker     │
+└──────┬───────┘     └──────┬───────┘
+       │                    │
+       │              ┌─────▼──────┐
+       │              │  cAdvisor  │
+       │              │   :8080    │
+       │              └─────┬──────┘
+       │                    │
+       └────────┬───────────┘
+                │ métriques
+                ▼
+        ┌──────────────┐
+        │  Prometheus  │
+        │    :9090     │
+        └──────┬───────┘
+               │
+    ┌──────────┼──────────┐
+    │          │          │
+    ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐
+│Grafana │ │ Alerts │ │  API   │
+│ :3000  │ └───┬────┘ └────────┘
+└────┬───┘     │
+     │         ▼
+     │  ┌──────────────┐
+     │  │Alertmanager  │
+     │  │    :9093     │
+     │  └──────────────┘
+     │
+     │  ┌──────────────┐
+     └──│     Loki     │
+        │    :3100     │
+        └──────────────┘
 ```
 
----
+### Métriques Collectées
 
-## 📁 Structure du Projet
+**Système (Node Exporter)** :
+- CPU : Utilisation, load average, contexte switches
+- Mémoire : Utilisée, disponible, swap
+- Disque : Espace, I/O, inodes
+- Réseau : Bande passante, paquets, erreurs
 
-```
-OceaniaWatch/
-├── oceania                          # Script principal de déploiement
-├── .gitignore                       # Protection des secrets
-├── README.md                        # Ce fichier
-│
-├── terraform/                       # Infrastructure as Code
-│   ├── backend/                     # Étape 1: Backend Terraform
-│   │   ├── main.tf                  # Configuration S3 + DynamoDB
-│   │   ├── provider.tf              # Provider AWS + Random
-│   │   ├── variables.tf             # Variables du backend
-│   │   ├── outputs.tf               # Outputs (bucket name, region)
-│   │   └── terraform.tfvars.example # Template
-│   │
-│   └── infrastructure/              # Étape 2: Infrastructure EC2
-│       ├── main.tf                  # Configuration backend distant
-│       ├── ec2.tf                   # Instance EC2 + Elastic IP
-│       ├── network.tf               # VPC, Subnet, Security Group
-│       ├── ssh.tf                   # Génération clés SSH ED25519
-│       ├── data.tf                  # Data sources (AMI, VPC)
-│       ├── variables.tf             # Variables infrastructure
-│       ├── outputs.tf               # Outputs (IP, SSH command)
-│       ├── terraform.tfvars.example # Template
-│       └── backend.hcl.example      # Template backend
-│
-├── ansible/                         # Configuration Management
-│   ├── ansible.cfg                  # Configuration Ansible
-│   ├── requirements.yml             # Collections requises
-│   ├── update-inventory.sh          # Script MAJ inventaire
-│   │
-│   ├── inventory/                   # Inventaires
-│   │   ├── dev.yml                  # Template inventaire dev
-│   │   └── group_vars/
-│   │       └── all.yml              # Variables globales
-│   │
-│   ├── playbooks/                   # Playbooks Ansible
-│   │   ├── setup-instance.yml       # Configuration complète
-│   │   ├── validate-setup.yml       # Validation installation
-│   │   └── rollback-docker.yml      # Rollback Docker
-│   │
-│   └── roles/                       # Rôles modulaires
-│       ├── docker/                  # Installation Docker
-│       │   ├── defaults/main.yml
-│       │   ├── tasks/main.yml
-│       │   └── handlers/main.yml
-│       ├── common-tools/            # Outils système
-│       │   ├── defaults/main.yml
-│       │   └── tasks/main.yml
-│       └── system-update/           # Mise à jour système
-│           ├── tasks/main.yml
-│           └── handlers/main.yml
-│
-└── .backups/                        # Sauvegardes automatiques
-    └── backup-pre-*-YYYYMMDD-HHMMSS/
-```
+**Conteneurs (cAdvisor)** :
+- CPU par conteneur
+- Mémoire par conteneur
+- Réseau par conteneur
+- I/O disque par conteneur
 
----
+### Alertes Pré-configurées
 
-## 🔧 Technologies
-
-### Infrastructure as Code
-
-| Technologie | Version | Rôle |
-|-------------|---------|------|
-| **Terraform** | >= 1.13.0 | Provisioning infrastructure |
-| **AWS Provider** | ~> 6.20.0 | Gestion ressources AWS |
-| **TLS Provider** | ~> 4.1.0 | Génération clés SSH |
-| **Local Provider** | ~> 2.5.3 | Fichiers locaux |
-| **Null Provider** | ~> 3.2.4 | Provisioners |
-| **Random Provider** | ~> 3.7.2 | Génération IDs aléatoires |
-
-### Configuration Management
-
-| Technologie | Version | Rôle |
-|-------------|---------|------|
-| **Ansible** | >= 2.9 | Configuration post-déploiement |
-| **community.general** | >= 11.4.1 | Collection Ansible |
-| **community.docker** | >= 4.8.2 | Gestion Docker |
-| **ansible.posix** | >= 2.1.0 | Modules POSIX |
-
-### Infrastructure Déployée
-
-| Composant | Version/Type | Description |
-|-----------|--------------|-------------|
-| **OS** | Amazon Linux 2023 | Système d'exploitation |
-| **Docker** | 29.0.0 | Containerisation |
-| **Docker Compose** | 2.40.3 | Orchestration containers |
-| **Instance** | t3.large | 2 vCPU, 8GB RAM |
-| **Storage** | 100GB EBS gp3 | Chiffré AES256 |
-| **Réseau** | Elastic IP | IP publique fixe |
-
-### Outils Installés
-
-- **git** - Version control
-- **vim** - Éditeur texte
-- **htop** - Monitoring processus
-- **tree** - Visualisation arborescence
-- **jq** - Parser JSON
-- **wget, curl** - Téléchargement fichiers
-- **unzip** - Extraction archives
-- **net-tools** - Outils réseau
+| Alerte | Condition | Durée | Sévérité |
+|--------|-----------|-------|----------|
+| InstanceDown | up == 0 | 5 min | Critical |
+| ContainerDown | Conteneur absent | 5 min | Critical |
+| HighCPUUsage | CPU > 80% | 10 min | Warning |
+| HighMemoryUsage | RAM > 85% | 10 min | Warning |
+| DiskSpaceLow | Disque < 15% | 5 min | Warning |
 
 ---
 
 ## ⚙️ Prérequis
 
-### Outils Locaux
-
-#### Obligatoires
+### Outils Locaux Obligatoires
 
 ```bash
 # Terraform
@@ -254,19 +287,7 @@ aws --version
 # Installation: https://aws.amazon.com/cli/
 ```
 
-#### Optionnels (recommandés)
-
-```bash
-# Scanner de sécurité
-tfsec checkov gitleaks
-
-# Outils de développement
-tree jq
-```
-
-### Accès et Permissions AWS
-
-#### Configuration AWS CLI
+### Configuration AWS CLI
 
 ```bash
 aws configure
@@ -279,391 +300,396 @@ aws configure
 aws sts get-caller-identity
 ```
 
-#### Permissions IAM Requises
+### Permissions IAM Requises
 
-Votre utilisateur/rôle AWS doit avoir les permissions suivantes :
+**Backend (S3 + DynamoDB)** :
+- `s3:*`, `dynamodb:*`
 
-**Pour le Backend (S3 + DynamoDB)**:
-- `s3:CreateBucket`, `s3:DeleteBucket`, `s3:PutBucket*`, `s3:GetBucket*`
-- `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`
-- `dynamodb:CreateTable`, `dynamodb:DeleteTable`, `dynamodb:DescribeTable`
+**Infrastructure (EC2 + Réseau)** :
+- `ec2:*`, `vpc:*`
 
-**Pour l'Infrastructure (EC2 + Réseau)**:
-- `ec2:*` (instances, security groups, elastic IPs, volumes)
-- `vpc:*` (si création VPC custom)
-
-**Politique IAM minimale recommandée**: PowerUserAccess ou EC2FullAccess + S3FullAccess + DynamoDBFullAccess
+**Recommandation** : PowerUserAccess ou EC2FullAccess + S3FullAccess + DynamoDBFullAccess
 
 ---
 
 ## 🚀 Installation et Déploiement
 
-### Script `oceania` - Outil Principal
-
-Le script `oceania` est un outil Bash unifié qui orchestre tout le cycle de vie de l'infrastructure.
-
-#### Fonctionnalités
-
-- ✅ Vérification automatique des prérequis (Terraform, Ansible, AWS CLI)
-- ✅ Validation des credentials AWS
-- ✅ Gestion d'état persistante (`.oceania-state`)
-- ✅ Sauvegardes automatiques avant actions destructives
-- ✅ Génération automatique de `backend.hcl`
-- ✅ Mode quiet pour CI/CD (`--quiet`)
-
-#### Commandes Disponibles
+### Quickstart (5 minutes)
 
 ```bash
-./oceania deploy        # Déploiement complet (backend + infra + config)
-./oceania status        # Afficher l'état du déploiement
-./oceania destroy       # Détruire infrastructure EC2 (garder backend)
-./oceania destroy-all   # Tout détruire (EC2 + backend)
-./oceania help          # Aide complète
-```
-
----
-
-### 📖 Guide de Déploiement Complet
-
-#### Option 1: Déploiement Automatique (Recommandé)
-
-**Durée**: 5-10 minutes
-
-```bash
-# 1. Configurer les variables Terraform
+# 1. Configurer les variables
 cd terraform/backend
 cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-# Éditer: project_name, environment, aws_region
+vim terraform.tfvars  # Éditer project_name, environment
 
 cd ../infrastructure
 cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-# Éditer: IMPORTANT - allowed_ssh_ips = ["VOTRE_IP/32"]
+vim terraform.tfvars  # IMPORTANT: allowed_ssh_ips = ["VOTRE_IP/32"]
 
 # 2. Retour à la racine
 cd ../..
 
-# 3. Déployer tout en une commande
-./oceania deploy
+# 3. Déployer TOUT
+./oceania deploy-all
 
-# Le script va:
-# - Vérifier Terraform, Ansible, AWS CLI installés
-# - Valider vos credentials AWS
-# - Créer une sauvegarde automatique
-# - Déployer le backend Terraform (S3 + DynamoDB)
-# - Générer automatiquement backend.hcl avec le bon bucket
-# - Déployer l'infrastructure EC2
-# - Générer les clés SSH ED25519
-# - Configurer l'instance avec Ansible (Docker + outils)
-# - Valider l'installation complète
-
-# 4. Se connecter
-# La commande SSH s'affiche à la fin:
-ssh -i ~/.ssh/oceania/oceania-watch-dev.pem ec2-user@<IP>
+# Durée: 10-15 minutes
+# Résultat: Infrastructure + Monitoring complets
 ```
 
-#### Option 2: Déploiement Manuel (Étape par Étape)
-
-**Pour comprendre chaque étape en détail**
-
-##### Étape 1: Backend Terraform (2-3 min)
+### Déploiement Progressif
 
 ```bash
-cd terraform/backend
+# Option 1: Infrastructure d'abord
+./oceania deploy-infra      # 7-10 min
+# Tester, configurer...
+./oceania deploy-monitoring # 3-5 min
 
-# Configuration
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-
-# Déploiement
-terraform init
-terraform plan
-terraform apply
-
-# Noter le bucket name
-terraform output s3_bucket_name
-# Exemple: oceania-watch-dev-tfstate-abc12345
-
-cd ../..
-```
-
-##### Étape 2: Infrastructure EC2 (3-5 min)
-
-```bash
-cd terraform/infrastructure
-
-# Configuration des variables
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-# IMPORTANT: Modifier allowed_ssh_ips = ["VOTRE_IP/32"]
-
-# Configuration du backend
-cp backend.hcl.example backend.hcl
-vim backend.hcl
-# Remplacer "your-bucket-name-here" par le bucket de l'étape 1
-
-# Déploiement
-terraform init -backend-config=backend.hcl
-terraform plan
-terraform apply
-
-# Récupérer les infos
-terraform output ssh_connection_string
-terraform output instance_public_ip
-
-cd ../..
-```
-
-##### Étape 3: Configuration Ansible (2-3 min)
-
-```bash
-cd ansible
-
-# Installer les collections Ansible
-ansible-galaxy collection install -r requirements.yml
-
-# Générer l'inventaire depuis Terraform
-bash update-inventory.sh
-
-# Tester la connectivité
-ansible all -m ping
-
-# Configuration complète
-ansible-playbook playbooks/setup-instance.yml
-
-# Validation
-ansible-playbook playbooks/validate-setup.yml
-
-cd ..
-```
-
-#### Option 3: Déploiement CI/CD (Mode Quiet)
-
-```bash
-# Mode silencieux (pas d'interactions)
-./oceania deploy --quiet
-
-# Idéal pour:
-# - Pipelines CI/CD (GitHub Actions, GitLab CI, Jenkins)
-# - Automatisation scripts
-# - Déploiements programmés
+# Option 2: Monitoring plus tard
+./oceania deploy-infra
+# Utiliser l'instance sans monitoring
+# Ajouter le monitoring quand nécessaire
+./oceania deploy-monitoring
 ```
 
 ---
 
-### 🔄 Gestion du Cycle de Vie
+## 🎮 Commandes Disponibles
 
-#### Vérifier l'État
+### Déploiement
+
+```bash
+# Déploiement complet (recommandé)
+./oceania deploy-all
+# ├─ Backend Terraform
+# ├─ Infrastructure EC2
+# ├─ Configuration Ansible
+# └─ Stack Monitoring
+
+# Infrastructure seule
+./oceania deploy-infra
+# ├─ Backend Terraform
+# ├─ Infrastructure EC2
+# └─ Configuration Ansible
+
+# Monitoring seul (nécessite infra déployée)
+./oceania deploy-monitoring
+# └─ Stack Monitoring complète
+```
+
+### Gestion
+
+```bash
+# Voir l'état complet
+./oceania status
+
+# Détruire infrastructure (garder backend)
+./oceania destroy
+
+# Tout détruire (irréversible)
+./oceania destroy-all
+
+# Aide
+./oceania help
+```
+
+### Résultat du Déploiement
+
+```
+✓ DÉPLOIEMENT COMPLET TERMINÉ AVEC SUCCÈS
+
+Infrastructure complète déployée et configurée !
+
+Connexion SSH:
+  ssh -i ~/.ssh/oceania/oceania-watch-dev.pem ec2-user@44.x.x.x
+
+Services de monitoring:
+  Prometheus:    http://44.x.x.x:9090
+  Grafana:       http://44.x.x.x:3000 (admin/changeme)
+  Alertmanager:  http://44.x.x.x:9093
+
+⚠  N'oubliez pas de changer le mot de passe Grafana !
+```
+
+---
+## 🔄 Gestion du Cycle de Vie
+
+### Vérifier l'État
 
 ```bash
 ./oceania status
 
 # Affiche:
 # - État du backend (bucket S3)
-# - État de l'infrastructure (instance running/stopped, IP)
-# - État de la configuration (Docker installé, version)
+# - État de l'infrastructure (instance, IP, état)
+# - État de la configuration (Docker, version)
+# - État du monitoring (services actifs, URLs)
 ```
 
-#### Arrêter l'Instance (Économiser)
+### Arrêter/Démarrer l'Instance
 
 ```bash
-# Via AWS CLI
+# Arrêter (économiser ~$60/mois)
 aws ec2 stop-instances --instance-ids $(cd terraform/infrastructure && terraform output -raw instance_id)
 
-# Coût: ~$9/mois (volume EBS seulement) au lieu de ~$70/mois
-```
-
-#### Démarrer l'Instance
-
-```bash
-# Via AWS CLI
+# Démarrer
 aws ec2 start-instances --instance-ids $(cd terraform/infrastructure && terraform output -raw instance_id)
-
-# Attendre le démarrage
 aws ec2 wait instance-running --instance-ids $(cd terraform/infrastructure && terraform output -raw instance_id)
-
-# L'Elastic IP reste la même, pas besoin de reconfigurer
 ```
 
-#### Détruire l'Infrastructure EC2 (Garder Backend)
+### Détruire et Redéployer
 
 ```bash
+# Détruire infrastructure (garder backend)
 ./oceania destroy
+# Coût: ~$1/mois (S3 + DynamoDB seulement)
 
-# Supprime:
-# - Instance EC2
-# - Elastic IP
-# - Security Group
-# - Clés SSH AWS (fichiers locaux conservés)
+# Redéployer rapidement
+./oceania deploy-infra
+./oceania deploy-monitoring
 
-# Conserve:
-# - Backend S3 (state)
-# - Table DynamoDB
-# - Possibilité de redéployer rapidement
-```
-
-#### Tout Détruire (EC2 + Backend)
-
-```bash
+# Tout détruire (ATTENTION: Irréversible!)
 ./oceania destroy-all
-
-# ATTENTION: Irréversible !
-
-# Supprime tout:
-# - Infrastructure EC2
-# - Backend S3 (avec vidage automatique du bucket)
-# - Table DynamoDB
-
-# Une sauvegarde est créée dans .backups/
+# Confirmation requise: DESTROY-ALL
 ```
 
 ---
 
-## 🔐 Gestion des Secrets
+## 📊 Monitoring et Observabilité
 
-### Fichiers Sensibles
+### Accès aux Services
 
-#### Non Versionnés (Protégés par .gitignore)
+| Service | URL | Credentials | Description |
+|---------|-----|-------------|-------------|
+| **Grafana** | http://IP:3000 | admin/changeme | Dashboards et visualisation |
+| **Prometheus** | http://IP:9090 | - | Métriques et requêtes PromQL |
+| **Alertmanager** | http://IP:9093 | - | Gestion des alertes |
+| **Node Exporter** | http://IP:9100/metrics | - | Métriques système brutes |
+| **cAdvisor** | http://IP:8080 | - | Métriques conteneurs |
+| **Loki** | http://IP:3100 | - | API logs |
+
+### Première Connexion Grafana
+
+1. Accéder à http://IP:3000
+2. Login : `admin` / `changeme`
+3. **Changer immédiatement le mot de passe**
+4. Datasources pré-configurées :
+   - Prometheus (par défaut)
+   - Loki
+
+### Dashboards Recommandés
+
+Importer depuis Grafana.com :
 
 ```bash
-# Terraform
-terraform/backend/terraform.tfvars          # Config backend
-terraform/infrastructure/terraform.tfvars   # Config infra + IPs SSH
-terraform/infrastructure/backend.hcl        # Nom du bucket S3
-*.tfstate                                   # État infrastructure
-.terraform/                                 # Cache Terraform
+# Dans Grafana: Menu → Dashboards → Import
+# Entrer l'ID:
 
-# SSH
-~/.ssh/oceania/*.pem                        # Clés SSH privées
-~/.ssh/oceania/*.pub                        # Clés SSH publiques
-
-# Script
-.oceania-state                              # État du déploiement
-.backups/                                   # Sauvegardes automatiques
+1860  # Node Exporter Full (métriques système complètes)
+179   # Docker Container & Host Metrics
+2     # Prometheus Stats (auto-monitoring)
 ```
 
-#### Versionnés (Templates Safe)
+### Requêtes PromQL Utiles
 
-```bash
-# Templates à copier et remplir
-terraform/backend/terraform.tfvars.example
-terraform/infrastructure/terraform.tfvars.example
-terraform/infrastructure/backend.hcl.example
+```promql
+# CPU usage total
+100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Mémoire disponible (%)
+node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100
+
+# Espace disque utilisé (%)
+100 - ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100)
+
+# Top 5 conteneurs par CPU
+topk(5, rate(container_cpu_usage_seconds_total{name!=""}[5m]))
+
+# Trafic réseau entrant
+rate(node_network_receive_bytes_total[5m])
 ```
 
-### Bonnes Pratiques
+### Configuration des Alertes
 
-#### 1. Vérifier Avant Commit
-#### 2. Scanner les Secrets
+#### Slack
 
-```bash
-# Scanner le projet
-gitleaks detect --verbose
-tfsec terraform/
-checkov -d terraform/
+```yaml
+# ansible/inventory/group_vars/monitoring.yml
+alertmanager_webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 ```
 
-#### 3. Sauvegarder les Clés SSH
+#### Email (via SMTP)
 
-```bash
-# Copier dans un endroit sûr
-cp -r ~/.ssh/oceania ~/secure-backup/
+Modifier `ansible/roles/monitoring-stack/templates/alertmanager.yml.j2` :
 
-# Puis stocker dans:
-# - 1Password
-# - AWS Secrets Manager
-# - HashiCorp Vault
-# - Bitwarden
+```yaml
+receivers:
+  - name: 'email'
+    email_configs:
+      - to: 'alerts@example.com'
+        from: 'prometheus@example.com'
+        smarthost: 'smtp.gmail.com:587'
+        auth_username: 'your-email@gmail.com'
+        auth_password: '{{ vault_smtp_password }}'
 ```
 
-#### 4. Utiliser Ansible Vault (Pour Secrets Applicatifs)
+### Gestion du Monitoring
 
 ```bash
-# Créer un fichier vault
-ansible-vault create ansible/group_vars/vault.yml
+# Via script oceania
+./oceania deploy-monitoring  # Déployer/Mettre à jour
+./oceania status             # Voir l'état
 
-# Ajouter:
-# db_password: "mot_de_passe_sécurisé"
-# api_key: "clé_api_secrète"
+# Via Ansible directement
+cd ansible
+ansible-playbook playbooks/deploy-monitoring.yml    # Déployer
+ansible-playbook playbooks/validate-monitoring.yml  # Valider
+ansible-playbook playbooks/stop-monitoring.yml      # Arrêter
+ansible-playbook playbooks/remove-monitoring.yml    # Supprimer
 
-# Utiliser dans playbooks:
-# "{{ db_password }}"
+# Sur le serveur
+ssh -i ~/.ssh/oceania/oceania-watch-dev.pem ec2-user@IP
+cd /opt/monitoring
+docker compose ps                    # État des conteneurs
+docker compose logs -f prometheus    # Logs Prometheus
+docker compose logs -f grafana       # Logs Grafana
+docker compose restart prometheus    # Redémarrer un service
 ```
 
-#### 5. Variables d'Environnement (Pour CI/CD)
+### Recharger Configuration Prometheus
 
 ```bash
-# Définir dans le CI/CD
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET_ACCESS_KEY="..."
-export TF_VAR_allowed_ssh_ips='["10.0.0.1/32"]'
-
-# Ne jamais hardcoder dans le code
+# Hot reload (sans redémarrage)
+curl -X POST http://IP:9090/-/reload
 ```
 
 ---
 
-## 📝 Variables
+## 📝 Variables de Configuration
 
-### Backend Terraform (`terraform/backend/terraform.tfvars`)
+### Backend Terraform
 
-| Variable | Type | Défaut | Description |
-|----------|------|--------|-------------|
-| `project_name` | string | - | Nom du projet (lettres minuscules + tirets) |
-| `environment` | string | "dev" | dev, staging, prod |
-| `aws_region` | string | "us-east-1" | Région AWS |
-| `enable_versioning` | bool | true | Versioning S3 (recommandé) |
-
-**Exemple**:
 ```hcl
+# terraform/backend/terraform.tfvars
 project_name      = "oceania-watch"
 environment       = "dev"
 aws_region        = "us-east-1"
 enable_versioning = true
 ```
 
-### Infrastructure (`terraform/infrastructure/terraform.tfvars`)
+### Infrastructure
 
-| Variable | Type | Défaut | Description |
-|----------|------|--------|-------------|
-| `project_name` | string | - | Nom du projet (doit correspondre au backend) |
-| `environment` | string | "dev" | Environnement |
-| `aws_region` | string | "us-east-1" | Région AWS |
-| `allowed_ssh_ips` | list(string) | ["0.0.0.0/0"] | ⚠️ IPs autorisées SSH (à restreindre !) |
-| `instance_type` | string | "t3.large" | Type d'instance EC2 |
-| `root_volume_size` | number | 100 | Taille volume en GB |
-| `root_volume_type` | string | "gp3" | Type de volume EBS |
-| `enable_public_ip` | bool | true | Activer IP publique |
-| `enable_detailed_monitoring` | bool | false | Monitoring CloudWatch détaillé |
-| `enable_termination_protection` | bool | false | Protection contre suppression |
-| `ssh_key_directory` | string | "~/.ssh/oceania" | Dossier clés SSH |
-
-**Exemple Sécurisé**:
 ```hcl
-aws_region        = "us-east-1"
+# terraform/infrastructure/terraform.tfvars
 project_name      = "oceania-watch"
-environment       = "prod"
-allowed_ssh_ips   = ["203.0.113.45/32"]  # Votre IP seulement !
+environment       = "dev"
+aws_region        = "us-east-1"
+allowed_ssh_ips   = ["203.0.113.45/32"]  # VOTRE IP !
 instance_type     = "t3.large"
 root_volume_size  = 100
-
-# Production
-enable_detailed_monitoring    = true
-enable_termination_protection = true
 ```
 
-### Backend Config (`terraform/infrastructure/backend.hcl`)
+### Monitoring
 
-| Variable | Valeur | Description |
-|----------|--------|-------------|
-| `bucket` | oceania-watch-dev-tfstate-xxx | Nom du bucket S3 (depuis étape 1) |
-| `key` | infrastructure/terraform.tfstate | Chemin du state |
-| `region` | us-east-1 | Région AWS |
-| `use_lockfile` | true | S3 native locking (Terraform >= 1.11) |
-| `encrypt` | true | Chiffrement du state |
+```yaml
+# ansible/inventory/group_vars/monitoring.yml
+# Versions
+prometheus_version: "v2.48.0"
+grafana_version: "10.2.2"
 
-**Note**: Ce fichier est généré automatiquement par `./oceania deploy`
+# Credentials
+grafana_admin_user: "admin"
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# Rétention
+prometheus_retention: "30d"
+loki_retention_period: "336h"  # 14 jours
+
+# Alertes
+alertmanager_webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK"
+```
+
+### Utiliser Ansible Vault
+
+```bash
+# Créer le fichier vault
+ansible-vault create ansible/inventory/group_vars/vault.yml
+
+# Contenu:
+vault_grafana_admin_password: "SuperSecurePassword123!"
+
+# Déployer avec vault
+cd ansible
+ansible-playbook playbooks/deploy-monitoring.yml --ask-vault-pass
+```
+
+---
+
+## 🔐 Sécurité
+
+### Fichiers Sensibles (Non Versionnés)
+
+```bash
+# Terraform
+terraform/backend/terraform.tfvars
+terraform/infrastructure/terraform.tfvars
+terraform/infrastructure/backend.hcl
+*.tfstate
+
+# SSH
+~/.ssh/oceania/*.pem
+~/.ssh/oceania/*.pub
+
+# Monitoring
+ansible/inventory/group_vars/monitoring.yml
+ansible/inventory/group_vars/vault.yml
+
+# État
+.oceania-state
+.backups/
+```
+
+### Bonnes Pratiques
+
+1. **Changer les mots de passe par défaut**
+   ```bash
+   # Grafana: admin/changeme → À CHANGER !
+   ```
+
+2. **Restreindre les IPs SSH**
+   ```hcl
+   # terraform/infrastructure/terraform.tfvars
+   allowed_ssh_ips = ["VOTRE_IP/32"]  # Pas 0.0.0.0/0 !
+   ```
+
+3. **Utiliser Ansible Vault**
+   ```bash
+   ansible-vault create ansible/inventory/group_vars/vault.yml
+   ```
+
+4. **Scanner les secrets**
+   ```bash
+   gitleaks detect --verbose
+   tfsec terraform/
+   checkov -d terraform/
+   ```
+
+5. **Sauvegarder les clés SSH**
+   ```bash
+   cp -r ~/.ssh/oceania ~/secure-backup/
+   # Puis stocker dans 1Password, Bitwarden, etc.
+   ```
+
+6. **Restreindre l'accès monitoring**
+   ```hcl
+   # terraform/infrastructure/network.tf
+   ingress {
+     description = "Grafana access"
+     from_port   = 3000
+     to_port     = 3000
+     protocol    = "tcp"
+     cidr_blocks = ["VOTRE_IP/32"]
+   }
+   ```
 
 ---
 
@@ -672,13 +698,13 @@ enable_termination_protection = true
 ### Tests de Connectivité
 
 ```bash
-# 1. Tester l'état général
+# État général
 ./oceania status
 
-# 2. Tester SSH
-ssh -i ~/.ssh/oceania/oceania-watch-dev.pem ec2-user@<IP>
+# SSH
+ssh -i ~/.ssh/oceania/oceania-watch-dev.pem ec2-user@IP
 
-# 3. Tester Ansible
+# Ansible
 cd ansible
 ansible all -m ping
 ```
@@ -686,90 +712,316 @@ ansible all -m ping
 ### Tests de Configuration
 
 ```bash
-# Validation Ansible complète
+# Validation complète
 cd ansible
 ansible-playbook playbooks/validate-setup.yml
+ansible-playbook playbooks/validate-monitoring.yml
+```
 
-# Vérifications:
-# ✓ Docker installé et version correcte
-# ✓ Docker Compose installé
-# ✓ Utilisateur ec2-user dans groupe docker
-# ✓ Outils système présents
-# ✓ Services démarrés
+### Tests de Monitoring
+
+```bash
+# APIs
+curl http://IP:9090/-/healthy        # Prometheus
+curl http://IP:3000/api/health       # Grafana
+curl http://IP:9093/-/healthy        # Alertmanager
+
+# Targets Prometheus
+curl http://IP:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health}'
+
+# Datasources Grafana
+curl http://admin:password@IP:3000/api/datasources
 ```
 
 ### Tests de Sécurité
 
 ```bash
-# 1. Scanner Terraform
 tfsec terraform/
-
-# 2. Scanner secrets
 gitleaks detect --verbose
-
-# 3. Audit complet
 checkov -d terraform/
-```
-
-### Tests d'Infrastructure
-
-```bash
-# Via Terraform
-cd terraform/infrastructure
-terraform plan  # Doit afficher "No changes"
-terraform output
-
-# Vérifier les ressources AWS
-aws ec2 describe-instances --filters "Name=tag:Project,Values=oceania-watch"
-aws s3 ls | grep oceania-watch
-```
-
-### Tests de Destruction/Recréation
-
-```bash
-# Test du cycle complet
-./oceania destroy       # Détruire infra
-./oceania deploy        # Redéployer
-# La configuration doit être identique
-
-# Test destruction totale
-./oceania destroy-all   # Tout détruire
-./oceania deploy        # Tout recréer
-# Nouveau bucket S3 avec nouveau suffixe
 ```
 
 ---
 
-## 💰 Coûts AWS (Estimation us-east-1)
+## 💰 Coûts AWS
 
-### Coûts Mensuels
+### Estimation Mensuelle (us-east-1)
 
-| Ressource | Running 24/7 | Stopped | Description |
-|-----------|--------------|---------|-------------|
-| **Instance t3.large** | ~$60/mois | $0 | 2 vCPU, 8GB RAM |
-| **Volume EBS 100GB gp3** | ~$8/mois | ~$8/mois | Stockage persistant |
-| **Elastic IP** | $0 | $0 | Gratuit si attaché |
-| **S3 Bucket** | <$1/mois | <$1/mois | State Terraform |
-| **DynamoDB Table** | <$0.50/mois | <$0.50/mois | Locking (si utilisé) |
-| **Data Transfer** | Variable | - | Selon utilisation |
-| **Total** | **~$70/mois** | **~$9/mois** | - |
+| Ressource | Running 24/7 | Stopped | Avec Monitoring |
+|-----------|--------------|---------|-----------------|
+| **Instance t3.large** | ~$60 | $0 | ~$60 |
+| **EBS 100GB gp3** | ~$8 | ~$8 | ~$8 |
+| **Elastic IP** | $0 | $0 | $0 |
+| **S3 + DynamoDB** | <$1 | <$1 | <$1 |
+| **Monitoring (CPU/RAM)** | - | - | +$0 (même instance) |
+| **Monitoring (Stockage)** | - | - | +$2-5 |
+| **Total** | **~$70** | **~$9** | **~$75** |
 
 ### Optimisation des Coûts
 
 ```bash
-# Arrêter l'instance quand inutilisée
+# 1. Arrêter l'instance quand inutilisée
 aws ec2 stop-instances --instance-ids <ID>
 # Économie: ~$60/mois
 
-# Utiliser instance plus petite (dev/staging)
+# 2. Instance plus petite (dev/staging)
 instance_type = "t3.medium"  # ~$30/mois au lieu de $60
 
-# Réduire volume EBS (si suffisant)
+# 3. Réduire rétention monitoring
+prometheus_retention: "7d"          # Au lieu de 15d
+loki_retention_period: "72h"        # Au lieu de 168h
+
+# 4. Réduire volume EBS
 root_volume_size = 50  # ~$4/mois au lieu de $8
 
-# Utiliser Savings Plans ou Reserved Instances (prod)
+# 5. Savings Plans (prod)
 # Économie: jusqu'à 72%
 ```
 
-**Dernière mise à jour**: 18 Novembre 2024
-**Version**: 0.1.0
+### Impact Monitoring
+
+- **CPU** : +15-20% (modéré)
+- **RAM** : +2-3 GB (modéré)
+- **Disque** : +5-10 GB selon rétention (faible)
+- **Réseau** : +100-200 MB/jour (négligeable)
+- **Coût additionnel** : ~$5/mois (principalement stockage)
+
+---
+
+## 🐛 Troubleshooting
+
+### Infrastructure
+
+#### Terraform init échoue
+
+```bash
+# Vérifier credentials AWS
+aws sts get-caller-identity
+
+# Réinitialiser
+cd terraform/infrastructure
+rm -rf .terraform
+terraform init -backend-config=backend.hcl -reconfigure
+```
+
+#### Instance non accessible
+
+```bash
+# Vérifier état
+aws ec2 describe-instances --instance-ids <ID>
+
+# Vérifier Security Group
+# Ajouter votre IP dans allowed_ssh_ips
+```
+
+### Monitoring
+
+#### Prometheus ne démarre pas
+
+```bash
+# Logs
+docker logs prometheus
+
+# Valider configuration
+docker exec prometheus promtool check config /etc/prometheus/prometheus.yml
+```
+
+#### Grafana ne se connecte pas à Prometheus
+
+```bash
+# Connectivité réseau
+docker exec grafana curl http://prometheus:9090/-/healthy
+
+# Vérifier datasources
+curl http://admin:password@IP:3000/api/datasources
+```
+
+#### Alertes non envoyées
+
+```bash
+# État Alertmanager
+curl http://IP:9093/api/v1/status
+
+# Tester alerte
+curl -X POST http://IP:9093/api/v1/alerts -d '[{"labels":{"alertname":"test"}}]'
+```
+
+#### Ports déjà utilisés
+
+```yaml
+# ansible/inventory/group_vars/monitoring.yml
+prometheus_port: 9091  # Au lieu de 9090
+grafana_port: 3001     # Au lieu de 3000
+```
+
+### Ansible
+
+#### Playbook échoue
+
+```bash
+# Mode verbose
+ansible-playbook playbooks/deploy-monitoring.yml -vvv
+
+# Tester connectivité
+ansible all -m ping
+
+# Vérifier inventaire
+cat ansible/inventory/dev.yml
+```
+
+---
+
+## 📁 Structure du Projet
+
+```
+OceaniaWatch/
+├── oceania                          # Script principal
+├── README.md                        # Ce fichier
+├── .gitignore                       # Protection secrets
+│
+├── terraform/
+│   ├── backend/                     # Backend S3 + DynamoDB
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   └── terraform.tfvars.example
+│   └── infrastructure/              # Infrastructure EC2
+│       ├── main.tf
+│       ├── ec2.tf
+│       ├── network.tf
+│       ├── ssh.tf
+│       ├── data.tf
+│       ├── variables.tf
+│       ├── outputs.tf
+│       ├── terraform.tfvars.example
+│       └── backend.hcl.example
+│
+├── ansible/
+│   ├── ansible.cfg
+│   ├── requirements.yml
+│   ├── update-inventory.sh
+│   ├── inventory/
+│   │   ├── dev.yml
+│   │   └── group_vars/
+│   │       ├── all.yml
+│   │       └── monitoring.yml.example
+│   ├── playbooks/
+│   │   ├── setup-instance.yml
+│   │   ├── validate-setup.yml
+│   │   ├── deploy-monitoring.yml
+│   │   ├── validate-monitoring.yml
+│   │   ├── stop-monitoring.yml
+│   │   └── remove-monitoring.yml
+│   └── roles/
+│       ├── docker/
+│       ├── common-tools/
+│       ├── system-update/
+│       └── monitoring-stack/
+│           ├── defaults/main.yml
+│           ├── tasks/main.yml
+│           ├── handlers/main.yml
+│           ├── templates/
+│           └── files/
+│
+├── monitoring/
+│   ├── docker-compose.yml           # Orchestration globale
+│   ├── prometheus/
+│   │   └── docker-compose.yml
+│   ├── grafana/
+│   │   └── docker-compose.yml
+│   ├── alertmanager/
+│   │   └── docker-compose.yml
+│   ├── node-exporter/
+│   │   └── docker-compose.yml
+│   ├── cadvisor/
+│   │   └── docker-compose.yml
+│   └── loki/
+│       └── docker-compose.yml
+│
+└── .backups/                        # Sauvegardes automatiques
+```
+
+---
+
+## 🔗 Ressources
+
+### Documentation
+
+- [Terraform](https://developer.hashicorp.com/terraform/docs)
+- [Ansible](https://docs.ansible.com/)
+- [Prometheus](https://prometheus.io/docs/)
+- [Grafana](https://grafana.com/docs/)
+- [Docker Compose](https://docs.docker.com/compose/)
+
+### Dashboards Grafana
+
+- [Node Exporter Full (1860)](https://grafana.com/grafana/dashboards/1860)
+- [Docker Container & Host (179)](https://grafana.com/grafana/dashboards/179)
+- [Prometheus Stats (2)](https://grafana.com/grafana/dashboards/2)
+
+---
+
+## 📜 Changelog
+
+### Version 2.0.0 (2024-11-18)
+
+**Ajouté** :
+- ✅ Stack monitoring complète (Prometheus, Grafana, Alertmanager, etc.)
+- ✅ Rôle Ansible `monitoring-stack` modulaire
+- ✅ 4 playbooks de gestion du monitoring
+- ✅ Commandes `deploy-all`, `deploy-infra`, `deploy-monitoring`
+- ✅ Alertes pré-configurées (CPU, RAM, Disk, Containers)
+- ✅ Dashboards Grafana auto-provisionnés
+- ✅ Documentation complète intégrée
+
+**Modifié** :
+- 🔄 Script `oceania` refactorisé (3 modes de déploiement)
+- 🔄 Flux de déploiement en 4 étapes
+- 🔄 Commande `status` avec état du monitoring
+
+### Version 0.1.0 (2024-11-18)
+
+- ✅ Infrastructure de base (Terraform + Ansible)
+- ✅ Backend S3 + DynamoDB
+- ✅ Instance EC2 avec Docker
+- ✅ Script `oceania` initial
+
+---
+
+## 📄 Licence
+
+MIT
+
+---
+
+## 👥 Auteurs
+
+OceaniaWatch DevOps Team
+
+---
+
+## 🎯 Prochaines Étapes
+
+### Court Terme
+1. ✅ Tester le déploiement complet
+2. ✅ Importer dashboards Grafana
+3. ✅ Configurer webhooks Alertmanager
+4. ✅ Restreindre accès réseau
+
+### Moyen Terme
+1. 🔄 Ajouter Grafana Tempo (tracing)
+2. 🔄 Intégrer AWS CloudWatch
+3. 🔄 Reverse proxy (Traefik/Nginx)
+4. 🔄 HTTPS avec Let's Encrypt
+
+### Long Terme
+1. 🚀 Multi-région
+2. 🚀 Auto Scaling Group + ALB
+3. 🚀 Kubernetes (EKS)
+4. 🚀 GitOps (ArgoCD/Flux)
+
+---
+
+**Dernière mise à jour** : 18 Novembre 2024  
+**Version** : 2.0.0  
+**Statut** : Production Ready ✅

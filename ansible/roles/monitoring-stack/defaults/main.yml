@@ -1,0 +1,50 @@
+---
+# Versions
+prometheus_version: "v3.7.3"
+grafana_version: "12.2.1"
+alertmanager_version: "v0.29.0"
+node_exporter_version: "v1.10.2"
+cadvisor_version: "v0.53.0"
+loki_version: "3.5.8"
+
+# Ports
+prometheus_port: 9090
+grafana_port: 3000
+alertmanager_port: 9093
+node_exporter_port: 9100
+cadvisor_port: 8080
+loki_port: 3100
+
+# Prometheus
+prometheus_scrape_interval: "15s"
+prometheus_evaluation_interval: "15s"
+prometheus_retention: "15d"
+prometheus_user_id: "65534"
+prometheus_group_id: "65534"
+
+# Grafana
+grafana_admin_user: "admin"
+grafana_admin_password: "{{ vault_grafana_admin_password | default('changeme') }}"
+grafana_root_url: "http://{{ ansible_host }}:3000"
+grafana_plugins: ""
+grafana_user_id: "472"
+grafana_group_id: "472"
+
+# Alertmanager
+alertmanager_webhook_url: "http://localhost:5001/"
+alertmanager_critical_webhook_url: "http://localhost:5001/critical"
+alertmanager_user_id: "65534"
+alertmanager_group_id: "65534"
+
+# Node Exporter
+node_exporter_user_id: "65534"
+node_exporter_group_id: "65534"
+
+# Loki
+loki_retention_period: "168h"
+loki_user_id: "10001"
+loki_group_id: "10001"
+
+# Deployment
+monitoring_stack_dir: "/opt/monitoring"
+monitoring_compose_file: "docker-compose.yml"

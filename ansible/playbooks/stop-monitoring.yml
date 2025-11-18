@@ -1,0 +1,16 @@
+---
+- name: Arrêter la stack de monitoring
+  hosts: oceania
+  become: yes
+
+  tasks:
+    - name: Arrêter la stack monitoring
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_stack_dir | default('/opt/monitoring') }}"
+        state: stopped
+      tags:
+        - monitoring
+
+    - name: Afficher le message de confirmation
+      ansible.builtin.debug:
+        msg: "Stack monitoring arrêtée avec succès"

@@ -1,0 +1,55 @@
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+  loki-data:
+
+services:
+  prometheus:
+    extends:
+      file: ./prometheus/docker-compose.yml
+      service: prometheus
+    networks:
+      - monitoring
+
+  grafana:
+    extends:
+      file: ./grafana/docker-compose.yml
+      service: grafana
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+      - loki
+
+  alertmanager:
+    extends:
+      file: ./alertmanager/docker-compose.yml
+      service: alertmanager
+    networks:
+      - monitoring
+
+  node-exporter:
+    extends:
+      file: ./node-exporter/docker-compose.yml
+      service: node-exporter
+    networks:
+      - monitoring
+
+  cadvisor:
+    extends:
+      file: ./cadvisor/docker-compose.yml
+      service: cadvisor
+    networks:
+      - monitoring
+
+  loki:
+    extends:
+      file: ./loki/docker-compose.yml
+      service: loki
+    networks:
+      - monitoring

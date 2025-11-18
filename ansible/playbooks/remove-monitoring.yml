@@ -1,0 +1,24 @@
+---
+- name: Supprimer la stack de monitoring
+  hosts: oceania
+  become: yes
+
+  tasks:
+    - name: Arrêter et supprimer la stack monitoring
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_stack_dir | default('/opt/monitoring') }}"
+        state: absent
+        remove_volumes: yes
+      tags:
+        - monitoring
+
+    - name: Supprimer le répertoire de la stack
+      ansible.builtin.file:
+        path: "{{ monitoring_stack_dir | default('/opt/monitoring') }}"
+        state: absent
+      tags:
+        - monitoring
+
+    - name: Afficher le message de confirmation
+      ansible.builtin.debug:
+        msg: "Stack monitoring supprimée avec succès"
