@@ -32,30 +32,41 @@
 
 ## 📋 Description
 
-**OceaniaWatch** est une solution Infrastructure as Code (IaC) complète permettant le déploiement automatisé d'une infrastructure AWS sécurisée et évolutive avec monitoring intégré. Le projet combine :
+> *"Big Brother is watching you"* - George Orwell, 1984
 
+**OceaniaWatch** est une plateforme de monitoring et d'observabilité complète, inspirée du concept de surveillance omniprésente du roman dystopique *1984*. Tout comme Oceania surveillait chaque aspect de la société, OceaniaWatch observe en temps réel l'ensemble de votre infrastructure.
+
+Cette solution permet de monitorer n'importe quel type d'infrastructure :
+- **Cloud providers** : AWS, Azure, GCP, DigitalOcean
+- **On-premise** : Serveurs physiques, datacenters privés
+- **Services managés** : RDS, Lambda, Kubernetes, etc.
+- **Hybride** : Environnements multi-cloud et mixtes
+
+Le projet combine :
 - **Terraform** pour le provisioning d'infrastructure
 - **Ansible** pour la configuration post-déploiement
 - **Docker Compose** pour l'orchestration des services
-- **Stack Monitoring** complète (Prometheus, Grafana, Alertmanager, etc.)
+- **Stack Monitoring** complète (Prometheus, Grafana, Alertmanager, Loki)
 
 ### Objectifs
 
-- ✅ **Automatisation complète** du cycle de vie infrastructure
-- ✅ **Reproductibilité** des environnements (dev, staging, prod)
-- ✅ **Sécurité** par défaut (chiffrement, clés SSH, state distant)
-- ✅ **Observabilité** complète avec métriques, logs et alertes
-- ✅ **Simplicité d'utilisation** via un script unifié (`oceania`)
+- ✅ **Monitoring universel** : Surveiller n'importe quelle infrastructure (cloud, on-prem, hybride)
+- ✅ **Observabilité complète** : Métriques, logs, alertes en temps réel
+- ✅ **Déploiement automatisé** : Infrastructure as Code reproductible
+- ✅ **Multi-provider** : Compatible AWS, Azure, GCP, bare-metal
+- ✅ **Simplicité** : Gestion unifiée via script `oceania`
 
 ### Composants Principaux
 
 | Composant | Technologie | Description |
 |-----------|-------------|-------------|
-| **Infrastructure** | Terraform + AWS | EC2, VPC, Security Groups, EBS |
-| **Configuration** | Ansible | Docker, outils système, utilisateurs |
-| **Monitoring** | Prometheus + Grafana | Métriques, visualisation, alertes |
+| **Collecte Métriques** | Prometheus | Time-series database, scraping, alerting |
+| **Visualisation** | Grafana | Dashboards interactifs, multi-datasources |
 | **Logs** | Loki | Agrégation et analyse de logs |
-| **Orchestration** | Script Bash | Gestion unifiée du cycle de vie |
+| **Alerting** | Alertmanager | Gestion et routage des alertes |
+| **Exporters** | Node, cAdvisor | Métriques système et conteneurs |
+| **Infrastructure** | Terraform + Ansible | Provisioning et configuration automatisés |
+| **Orchestration** | Docker Compose | Déploiement de la stack monitoring |
 
 ---
 
