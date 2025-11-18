@@ -4,6 +4,7 @@
 # Script oceania - fichiers générés
 #################################################
 .oceania-state
+.oceania-credentials
 .backups/
 
 #################################################

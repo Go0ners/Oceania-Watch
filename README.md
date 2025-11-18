@@ -68,7 +68,7 @@
 │                                                                     │
 │  ┌────────────────────┐                                             │
 │  │  Backend Terraform │                                             │
-│  │  ┌──────────────┐  │  State Storage + Versioning                │
+│  │  ┌──────────────┐  │  State Storage + Versioning                 │
 │  │  │ S3 + DynamoDB│  │                                             │
 │  │  └──────────────┘  │                                             │
 │  └────────────────────┘                                             │
@@ -87,20 +87,20 @@
 │  │  │  ┌────────────────────────────────────────┐      │      │     │
 │  │  │  │  Stack Monitoring (Docker Compose)     │      │      │     │
 │  │  │  │                                        │      │      │     │
-│  │  │  │  ┌──────────┐  ┌──────────┐           │      │      │     │
-│  │  │  │  │Prometheus│  │ Grafana  │           │      │      │     │
-│  │  │  │  │  :9090   │  │  :3000   │           │      │      │     │
-│  │  │  │  └────┬─────┘  └────┬─────┘           │      │      │     │
-│  │  │  │       │             │                 │      │      │     │
-│  │  │  │  ┌────▼─────┐  ┌────▼─────┐           │      │      │     │
-│  │  │  │  │  Node    │  │  Loki    │           │      │      │     │
-│  │  │  │  │ Exporter │  │  :3100   │           │      │      │     │
-│  │  │  │  │  :9100   │  └──────────┘           │      │      │     │
-│  │  │  │  └──────────┘                         │      │      │     │
-│  │  │  │  ┌──────────┐  ┌──────────┐           │      │      │     │
-│  │  │  │  │cAdvisor  │  │Alertmgr  │           │      │      │     │
-│  │  │  │  │  :8080   │  │  :9093   │           │      │      │     │
-│  │  │  │  └──────────┘  └──────────┘           │      │      │     │
+│  │  │  │  ┌──────────┐  ┌──────────┐            │      │      │     │
+│  │  │  │  │Prometheus│  │ Grafana  │            │      │      │     │
+│  │  │  │  │  :9090   │  │  :3000   │            │      │      │     │
+│  │  │  │  └────┬─────┘  └────┬─────┘            │      │      │     │
+│  │  │  │       │             │                  │      │      │     │
+│  │  │  │  ┌────▼─────┐  ┌────▼─────┐            │      │      │     │
+│  │  │  │  │  Node    │  │  Loki    │            │      │      │     │
+│  │  │  │  │ Exporter │  │  :3100   │            │      │      │     │
+│  │  │  │  │  :9100   │  └──────────┘            │      │      │     │
+│  │  │  │  └──────────┘                          │      │      │     │
+│  │  │  │  ┌──────────┐  ┌──────────┐            │      │      │     │
+│  │  │  │  │cAdvisor  │  │Alertmgr  │            │      │      │     │
+│  │  │  │  │  :8080   │  │  :9093   │            │      │      │     │
+│  │  │  │  └──────────┘  └──────────┘            │      │      │     │
 │  │  │  └────────────────────────────────────────┘      │      │     │
 │  │  │                                                  │      │     │
 │  │  │  ┌────────────────┐                              │      │     │
@@ -190,12 +190,12 @@
 
 | Composant | Version | Port | Description |
 |-----------|---------|------|-------------|
-| **Prometheus** | 2.48.0 | 9090 | Collecte et stockage des métriques |
-| **Grafana** | 10.2.2 | 3000 | Visualisation et dashboards |
-| **Alertmanager** | 0.26.0 | 9093 | Gestion des alertes |
-| **Node Exporter** | 1.7.0 | 9100 | Métriques système (CPU, RAM, Disk) |
-| **cAdvisor** | 0.47.2 | 8080 | Métriques des conteneurs Docker |
-| **Loki** | 2.9.3 | 3100 | Agrégation de logs |
+| **Prometheus** | 3.7.3 | 9090 | Collecte et stockage des métriques |
+| **Grafana** | 12.2.1 | 3000 | Visualisation et dashboards |
+| **Alertmanager** | 0.29.0 | 9093 | Gestion des alertes |
+| **Node Exporter** | 1.10.2 | 9100 | Métriques système (CPU, RAM, Disk) |
+| **cAdvisor** | 0.53.0 | 8080 | Métriques des conteneurs Docker |
+| **Loki** | 3.5.8 | 3100 | Agrégation de logs |
 
 ### Architecture Monitoring
 
@@ -339,16 +339,9 @@ cd ../..
 ### Déploiement Progressif
 
 ```bash
-# Option 1: Infrastructure d'abord
+# Déploiement en 2 étapes
 ./oceania deploy-infra      # 7-10 min
-# Tester, configurer...
 ./oceania deploy-monitoring # 3-5 min
-
-# Option 2: Monitoring plus tard
-./oceania deploy-infra
-# Utiliser l'instance sans monitoring
-# Ajouter le monitoring quand nécessaire
-./oceania deploy-monitoring
 ```
 
 ---
@@ -593,8 +586,8 @@ root_volume_size  = 100
 ```yaml
 # ansible/inventory/group_vars/monitoring.yml
 # Versions
-prometheus_version: "v2.48.0"
-grafana_version: "10.2.2"
+prometheus_version: "v3.7.3"
+grafana_version: "12.2.1"
 
 # Credentials
 grafana_admin_user: "admin"

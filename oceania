@@ -24,6 +24,7 @@ readonly TERRAFORM_INFRA_DIR="${SCRIPT_DIR}/terraform/infrastructure"
 readonly ANSIBLE_DIR="${SCRIPT_DIR}/ansible"
 readonly STATE_FILE="${SCRIPT_DIR}/.oceania-state"
 readonly BACKUP_DIR="${SCRIPT_DIR}/.backups"
+readonly CREDENTIALS_FILE="${SCRIPT_DIR}/.oceania-credentials"
 
 # Variables globales
 QUIET_MODE=false
@@ -194,8 +195,50 @@ create_backup() {
         cp "$STATE_FILE" "${backup_path}/"
     fi
 
+    # Backup credentials
+    if [[ -f "$CREDENTIALS_FILE" ]]; then
+        cp "$CREDENTIALS_FILE" "${backup_path}/"
+    fi
+
     log_success "Sauvegarde créée: ${backup_path}"
     echo "$backup_path"
+}
+
+generate_password() {
+    openssl rand -base64 32 | tr -d "=+/" | cut -c1-24
+}
+
+save_credentials() {
+    local ip=$1
+    local grafana_pass=$2
+
+    cat > "$CREDENTIALS_FILE" <<EOF
+{
+  "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "instance_ip": "$ip",
+  "grafana": {
+    "url": "http://$ip:3000",
+    "user": "admin",
+    "password": "$grafana_pass"
+  },
+  "prometheus": {
+    "url": "http://$ip:9090"
+  },
+  "alertmanager": {
+    "url": "http://$ip:9093"
+  },
+  "node_exporter": {
+    "url": "http://$ip:9100/metrics"
+  },
+  "cadvisor": {
+    "url": "http://$ip:8080"
+  },
+  "loki": {
+    "url": "http://$ip:3100"
+  }
+}
+EOF
+    chmod 600 "$CREDENTIALS_FILE"
 }
 
 #################################################
@@ -439,8 +482,13 @@ deploy_monitoring() {
 
     cd "$ANSIBLE_DIR"
 
+    # Générer mot de passe Grafana
+    local grafana_password=$(generate_password)
+    log_info "Génération du mot de passe Grafana..."
+
     log_info "Déploiement de Prometheus, Grafana, Alertmanager..."
-    ansible-playbook playbooks/deploy-monitoring.yml
+    ansible-playbook playbooks/deploy-monitoring.yml \
+        -e "grafana_admin_password=$grafana_password"
 
     if [[ $? -eq 0 ]]; then
         save_state "monitoring" "deployed"
@@ -448,6 +496,14 @@ deploy_monitoring() {
 
         log_info "Validation de la stack monitoring..."
         ansible-playbook playbooks/validate-monitoring.yml
+
+        # Sauvegarder credentials
+        cd "$TERRAFORM_INFRA_DIR"
+        local instance_ip=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
+        if [[ "$instance_ip" != "N/A" ]]; then
+            save_credentials "$instance_ip" "$grafana_password"
+            log_success "Credentials sauvegardés dans .oceania-credentials"
+        fi
 
         return 0
     else
@@ -553,12 +609,12 @@ cmd_deploy_monitoring() {
         echo ""
         echo "Services de monitoring:"
         printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
-        printf "  ${CYAN}Grafana:       http://%s:3000${NC} (admin/changeme)\n" "$instance_ip"
+        printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
         printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
         printf "  ${CYAN}Node Exporter: http://%s:9100/metrics${NC}\n" "$instance_ip"
         printf "  ${CYAN}cAdvisor:      http://%s:8080${NC}\n" "$instance_ip"
         echo ""
-        log_warning "N'oubliez pas de changer le mot de passe Grafana !"
+        log_info "Pour afficher les credentials: ./oceania credentials"
         echo ""
     else
         print_header "✗ ÉCHEC DU DÉPLOIEMENT MONITORING"
@@ -621,14 +677,13 @@ cmd_deploy_all() {
         echo ""
         echo "Services de monitoring:"
         printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
-        printf "  ${CYAN}Grafana:       http://%s:3000${NC} (admin/changeme)\n" "$instance_ip"
+        printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
         printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
         echo ""
-        log_warning "N'oubliez pas de changer le mot de passe Grafana !"
-        echo ""
         echo "Pour gérer l'instance:"
-        echo "  ./oceania status    - Voir l'état"
-        echo "  ./oceania destroy   - Détruire l'infrastructure"
+        echo "  ./oceania credentials - Afficher les logins/passwords"
+        echo "  ./oceania status      - Voir l'état"
+        echo "  ./oceania destroy     - Détruire l'infrastructure"
         echo ""
     else
         print_header "✗ ÉCHEC DU DÉPLOIEMENT"
@@ -797,6 +852,83 @@ cmd_destroy_all() {
 }
 
 #################################################
+# Commande CREDENTIALS
+#################################################
+
+cmd_credentials() {
+    local action=${1:-show}
+
+    if [[ "$action" == "--regenerate" ]]; then
+        print_header "🔄 RÉGÉNÉRATION MOT DE PASSE GRAFANA"
+
+        if [[ ! -f "$CREDENTIALS_FILE" ]]; then
+            log_error "Aucun credential trouvé"
+            log_info "Déployez d'abord avec: ./oceania deploy-all"
+            exit 1
+        fi
+
+        # Générer nouveau mot de passe
+        local new_pass=$(generate_password)
+        log_info "Génération d'un nouveau mot de passe..."
+
+        # Mettre à jour via Ansible
+        cd "$ANSIBLE_DIR"
+        if ansible oceania -m shell -a "docker exec grafana grafana-cli admin reset-admin-password $new_pass" >/dev/null 2>&1; then
+            log_success "Mot de passe Grafana mis à jour"
+
+            # Mettre à jour le fichier credentials
+            local ip=$(grep -o '"instance_ip": "[^"]*' "$CREDENTIALS_FILE" | cut -d'"' -f4)
+            save_credentials "$ip" "$new_pass"
+            log_success "Credentials sauvegardés"
+
+            echo ""
+            action="show"
+        else
+            log_error "Échec de la mise à jour du mot de passe"
+            exit 1
+        fi
+    fi
+
+    if [[ "$action" == "show" ]]; then
+        if [[ ! -f "$CREDENTIALS_FILE" ]]; then
+            log_error "Aucun credential trouvé"
+            log_info "Déployez d'abord avec: ./oceania deploy-all"
+            exit 1
+        fi
+
+        print_header "🔐 CREDENTIALS OCEANIAWATCH"
+
+        local ip=$(grep -o '"instance_ip": "[^"]*' "$CREDENTIALS_FILE" | cut -d'"' -f4)
+        local grafana_user=$(grep -o '"user": "[^"]*' "$CREDENTIALS_FILE" | head -1 | cut -d'"' -f4)
+        local grafana_pass=$(grep -o '"password": "[^"]*' "$CREDENTIALS_FILE" | cut -d'"' -f4)
+
+        printf "${CYAN}Grafana:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:3000${NC}\n" "$ip"
+        printf "  User:     ${GREEN}%s${NC}\n" "$grafana_user"
+        printf "  Password: ${YELLOW}%s${NC}\n" "$grafana_pass"
+        echo ""
+        printf "${CYAN}Prometheus:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:9090${NC}\n" "$ip"
+        printf "  Auth:     ${GREEN}None${NC}\n"
+        echo ""
+        printf "${CYAN}Alertmanager:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:9093${NC}\n" "$ip"
+        printf "  Auth:     ${GREEN}None${NC}\n"
+        echo ""
+        printf "${CYAN}Node Exporter:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:9100/metrics${NC}\n" "$ip"
+        echo ""
+        printf "${CYAN}cAdvisor:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:8080${NC}\n" "$ip"
+        echo ""
+        printf "${CYAN}Loki:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:3100${NC}\n" "$ip"
+        echo ""
+        log_info "Pour régénérer le mot de passe Grafana: ./oceania credentials --regenerate"
+    fi
+}
+
+#################################################
 # Commande STATUS
 #################################################
 
@@ -927,42 +1059,19 @@ show_help() {
     echo "    ./oceania <commande> [options]"
     echo ""
     printf "${YELLOW}COMMANDES DE DÉPLOIEMENT:${NC}\n"
-    printf "    ${GREEN}deploy-all${NC}        Déployer TOUT de A à Z\n"
-    echo "                        - Backend Terraform (S3 + DynamoDB)"
-    echo "                        - Infrastructure EC2 (instance, réseau, SSH)"
-    echo "                        - Configuration Ansible (Docker, outils)"
-    echo "                        - Stack Monitoring (Prometheus, Grafana, etc.)"
+    printf "    ${GREEN}deploy-all${NC}            Déployer TOUT de A à Z\n"
+    printf "    ${GREEN}deploy-infra${NC}          Déployer uniquement l'infrastructure\n"
+    printf "    ${GREEN}deploy-monitoring${NC}     Déployer uniquement la stack monitoring\n"
     echo ""
-    printf "    ${GREEN}deploy-infra${NC}      Déployer uniquement l'infrastructure\n"
-    echo "                        - Backend Terraform (S3 + DynamoDB)"
-    echo "                        - Infrastructure EC2 (instance, réseau, SSH)"
-    echo "                        - Configuration Ansible (Docker, outils)"
-    echo ""
-    printf "    ${GREEN}deploy-monitoring${NC} Déployer uniquement la stack monitoring\n"
-    echo "                        - Prometheus, Grafana, Alertmanager"
-    echo "                        - Node Exporter, cAdvisor, Loki"
-    echo "                        - Prérequis: infrastructure déployée"
-    echo ""
+    printf "${YELLOW}COMMANDES DE DESTRUCTION:${NC}\n"
+    printf "    ${RED}destroy${NC}               Détruire l'infrastructure EC2 uniquement\n"
+    printf "    ${RED}destroy-all${NC}           Détruire TOUTE l'infrastructure\n"
     echo ""
     printf "${YELLOW}COMMANDES DE GESTION:${NC}\n"
-    printf "    ${RED}destroy${NC}     Détruire l'infrastructure EC2 uniquement\n"
-    echo "                  - Suppression instance EC2 et ressources associées"
-    echo "                  - Conservation du backend Terraform (S3, DynamoDB)"
-    echo "                  - Possibilité de redéployer rapidement"
-    echo ""
-    printf "    ${RED}destroy-all${NC} Détruire TOUTE l'infrastructure\n"
-    echo "                  - Suppression EC2 + Backend Terraform"
-    echo "                  - Sauvegarde automatique avant destruction"
-    echo "                  - Action irréversible (confirmation requise)"
-    echo ""
-    printf "    ${BLUE}status${NC}      Afficher l'état actuel du déploiement\n"
-    echo "                  - État du backend Terraform"
-    echo "                  - État de l'infrastructure EC2"
-    echo "                  - État de la configuration Ansible"
-    echo "                  - État de la stack monitoring"
-    echo ""
-    printf "    ${CYAN}help${NC}        Afficher cette aide\n"
-    echo ""
+    printf "    ${BLUE}credentials${NC}           Afficher les credentials (URLs, logins, passwords)\n"
+    echo "                          --regenerate Nouveau mot de passe Grafana"
+    printf "    ${BLUE}status${NC}                Afficher l'état actuel du déploiement\n"
+    printf "    ${CYAN}help${NC}                  Afficher cette aide\n"
     printf "${YELLOW}OPTIONS:${NC}\n"
     echo "    -q, --quiet     Mode silencieux (pas d'interactions)"
     echo "    -h, --help      Afficher l'aide"
@@ -990,7 +1099,7 @@ main() {
                 show_help
                 exit 0
                 ;;
-            deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|help)
+            deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|credentials|help)
                 local command=$1
                 shift
                 break
@@ -1023,6 +1132,9 @@ main() {
             ;;
         status)
             cmd_status "$@"
+            ;;
+        credentials)
+            cmd_credentials "$@"
             ;;
         help)
             show_help
