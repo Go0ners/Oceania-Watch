@@ -27,19 +27,19 @@
   tags:
     - monitoring
 
-- name: Copier les fichiers Docker Compose
-  ansible.builtin.copy:
+- name: Générer les fichiers Docker Compose depuis les templates
+  ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ monitoring_stack_dir }}/{{ item.dest }}"
     mode: '0644'
   loop:
-    - { src: 'files/docker-compose.yml', dest: 'docker-compose.yml' }
-    - { src: 'files/prometheus/docker-compose.yml', dest: 'prometheus/docker-compose.yml' }
-    - { src: 'files/grafana/docker-compose.yml', dest: 'grafana/docker-compose.yml' }
-    - { src: 'files/alertmanager/docker-compose.yml', dest: 'alertmanager/docker-compose.yml' }
-    - { src: 'files/node-exporter/docker-compose.yml', dest: 'node-exporter/docker-compose.yml' }
-    - { src: 'files/cadvisor/docker-compose.yml', dest: 'cadvisor/docker-compose.yml' }
-    - { src: 'files/loki/docker-compose.yml', dest: 'loki/docker-compose.yml' }
+    - { src: 'docker-compose.yml.j2', dest: 'docker-compose.yml' }
+    - { src: 'prometheus-compose.yml.j2', dest: 'prometheus/docker-compose.yml' }
+    - { src: 'grafana-compose.yml.j2', dest: 'grafana/docker-compose.yml' }
+    - { src: 'alertmanager-compose.yml.j2', dest: 'alertmanager/docker-compose.yml' }
+    - { src: 'node-exporter-compose.yml.j2', dest: 'node-exporter/docker-compose.yml' }
+    - { src: 'cadvisor-compose.yml.j2', dest: 'cadvisor/docker-compose.yml' }
+    - { src: 'loki-compose.yml.j2', dest: 'loki/docker-compose.yml' }
   tags:
     - monitoring
 
@@ -66,14 +66,44 @@
   tags:
     - monitoring
 
+- name: Corriger les permissions du volume Loki
+  ansible.builtin.file:
+    path: "/var/lib/docker/volumes/monitoring_loki-data/_data"
+    owner: "{{ loki_user_id }}"
+    group: "{{ loki_group_id }}"
+    state: directory
+    recurse: yes
+  become: yes
+  tags:
+    - monitoring
+
+- name: Vérifier que tous les conteneurs sont démarrés
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop:
+    - prometheus
+    - grafana
+    - alertmanager
+    - node-exporter
+    - cadvisor
+    - loki
+  register: containers_status
+  until: containers_status.container.State.Status == "running"
+  retries: 30
+  delay: 2
+  tags:
+    - monitoring
+
 - name: Attendre que Prometheus soit prêt
   ansible.builtin.uri:
     url: "http://localhost:{{ prometheus_port }}/-/ready"
     status_code: 200
+    timeout: 5
   register: prometheus_ready
   until: prometheus_ready.status == 200
   retries: 30
-  delay: 2
+  delay: 5
+  failed_when: false
   tags:
     - monitoring
 
@@ -81,10 +111,69 @@
   ansible.builtin.uri:
     url: "http://localhost:{{ grafana_port }}/api/health"
     status_code: 200
+    timeout: 5
   register: grafana_ready
   until: grafana_ready.status == 200
   retries: 30
-  delay: 2
+  delay: 3
+  failed_when: false
+  tags:
+    - monitoring
+
+- name: Récupérer les versions des images déployées
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop:
+    - prometheus
+    - grafana
+    - alertmanager
+    - node-exporter
+    - cadvisor
+    - loki
+  register: container_info
+  tags:
+    - monitoring
+
+- name: Créer le fichier de versions
+  ansible.builtin.copy:
+    content: |
+      # Versions de la stack monitoring
+      # Généré automatiquement le {{ ansible_date_time.iso8601 }}
+
+      {% for container in container_info.results %}
+      {{ container.item }}: {{ container.container.Config.Image }}
+      {% endfor %}
+    dest: "{{ monitoring_stack_dir }}/versions.txt"
+    mode: '0644'
+  tags:
+    - monitoring
+
+- name: Mettre à jour le README avec les versions déployées
+  ansible.builtin.lineinfile:
+    path: "{{ role_path }}/README.md"
+    regexp: "^\\*\\*{{ item.name }}\\*\\*:"
+    line: "- **{{ item.name }}**: {{ item.version }}"
+    state: present
+  loop:
+    - { name: 'Prometheus', version: "{{ container_info.results[0].container.Config.Image.split(':')[1] | default('latest') }}" }
+    - { name: 'Grafana', version: "{{ container_info.results[1].container.Config.Image.split(':')[1] | default('latest') }}" }
+    - { name: 'Alertmanager', version: "{{ container_info.results[2].container.Config.Image.split(':')[1] | default('latest') }}" }
+    - { name: 'Node Exporter', version: "{{ container_info.results[3].container.Config.Image.split(':')[1] | default('latest') }}" }
+    - { name: 'cAdvisor', version: "{{ container_info.results[4].container.Config.Image.split(':')[1] | default('latest') }}" }
+    - { name: 'Loki', version: "{{ container_info.results[5].container.Config.Image.split(':')[1] | default('latest') }}" }
+  delegate_to: localhost
+  become: no
+  tags:
+    - monitoring
+
+- name: Mettre à jour la date de dernière vérification dans le README
+  ansible.builtin.lineinfile:
+    path: "{{ role_path }}/README.md"
+    regexp: "^\\*\\*Dernière vérification\\*\\*:"
+    line: "**Dernière vérification**: {{ ansible_date_time.date }}"
+    state: present
+  delegate_to: localhost
+  become: no
   tags:
     - monitoring
 
@@ -98,5 +187,7 @@
       - "Node Exporter: http://{{ ansible_host }}:{{ node_exporter_port }}/metrics"
       - "cAdvisor: http://{{ ansible_host }}:{{ cadvisor_port }}"
       - "Loki: http://{{ ansible_host }}:{{ loki_port }}"
+      - ""
+      - "📋 Versions déployées: {{ monitoring_stack_dir }}/versions.txt"
   tags:
     - monitoring

@@ -2,11 +2,11 @@ all:
   children:
     oceania:
       hosts:
-        oceania-dev:
-          ansible_host: 44.198.98.164
+        oceania-Dev:
+          ansible_host: 52.1.223.137
           ansible_user: ec2-user
-          ansible_ssh_private_key_file: /Users/maxime/.ssh/oceania/oceania-watch-dev.pem
+          ansible_ssh_private_key_file: /Users/maxime/.ssh/oceania/Oceania-watch-Dev.pem
           ansible_python_interpreter: /usr/bin/python3
       vars:
-        env: dev
-        project_name: oceania-watch
+        env: Dev
+        project_name: Oceania-watch

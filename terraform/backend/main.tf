@@ -9,7 +9,7 @@ resource "random_id" "bucket_suffix" {
 
 # Bucket S3 pour stocker le tfstate
 resource "aws_s3_bucket" "tfstate" {
-  bucket        = "${var.project_name}-${var.environment}-tfstate-${random_id.bucket_suffix.hex}"
+  bucket        = "${lower(var.project_name)}-${lower(var.environment)}-tfstate-${random_id.bucket_suffix.hex}"
   force_destroy = false
 
   tags = {
@@ -79,7 +79,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "tfstate" {
 
 # Table DynamoDB pour le state locking
 resource "aws_dynamodb_table" "tfstate_lock" {
-  name         = "${var.project_name}-${var.environment}-tfstate-lock"
+  name         = "${lower(var.project_name)}-${lower(var.environment)}-tfstate-lock"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "LockID"
 

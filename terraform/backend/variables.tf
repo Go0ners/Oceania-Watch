@@ -8,17 +8,17 @@ variable "project_name" {
   description = "Name of the project (used in resource naming)"
   type        = string
   validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.project_name))
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.project_name))
     error_message = "Project name must contain only lowercase letters, numbers, and hyphens."
   }
 }
 
 variable "environment" {
-  description = "Environment name (dev, staging, prod)"
+  description = "Environment name (dev, staging, qual, prod)"
   type        = string
   validation {
-    condition     = contains(["dev", "staging", "prod"], var.environment)
-    error_message = "Environment must be one of: dev, staging, prod."
+    condition     = contains(["Dev", "Staging", "Qual", "Prod"], var.environment)
+    error_message = "Environment must be one of: Dev, Staging, Qual, Prod"
   }
 }
 

@@ -1,11 +1,11 @@
 ---
 # Versions
-prometheus_version: "v3.7.3"
-grafana_version: "v12.2.1"
-alertmanager_version: "v0.29.0"
-node_exporter_version: "v1.10.2"
-cadvisor_version: "v0.53.0"
-loki_version: "3.5.8"
+prometheus_version: "latest"
+grafana_version: "latest"
+alertmanager_version: "latest"
+node_exporter_version: "latest"
+cadvisor_version: "latest"
+loki_version: "latest"
 
 # Ports
 prometheus_port: 9090

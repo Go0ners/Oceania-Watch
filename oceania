@@ -276,12 +276,6 @@ deploy_backend() {
         save_state "backend" "deployed"
         log_success "Backend déployé avec succès"
 
-        # Afficher les informations importantes
-        echo ""
-        log_info "Informations du backend:"
-        terraform output
-        echo ""
-
         # Mettre à jour automatiquement le backend dans infrastructure/main.tf
         local bucket_name=$(terraform output -raw s3_bucket_name 2>/dev/null)
         if [[ -n "$bucket_name" ]]; then
@@ -322,36 +316,25 @@ deploy_infrastructure() {
         fi
     fi
 
-    # Vérifier backend.hcl
-    if [[ ! -f "backend.hcl" ]]; then
-        if [[ -f "backend.hcl.example" ]]; then
-            log_warning "backend.hcl non trouvé"
-            log_info "Récupération du bucket depuis le backend..."
+    # Récupérer le nom du bucket depuis le backend
+    cd "$TERRAFORM_BACKEND_DIR"
+    BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null)
+    cd "$TERRAFORM_INFRA_DIR"
 
-            # Récupérer le nom du bucket depuis le backend
-            cd "$TERRAFORM_BACKEND_DIR"
-            BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null)
-            cd "$TERRAFORM_INFRA_DIR"
-
-            if [[ -n "$BUCKET_NAME" ]]; then
-                log_info "Création de backend.hcl avec bucket: $BUCKET_NAME"
-                cat > backend.hcl <<EOF
+    if [[ -n "$BUCKET_NAME" ]]; then
+        log_info "Configuration backend avec bucket: $BUCKET_NAME"
+        cat > backend.hcl <<EOF
 bucket       = "$BUCKET_NAME"
 key          = "infrastructure/terraform.tfstate"
 region       = "us-east-1"
 use_lockfile = true
 encrypt      = true
 EOF
-                log_success "backend.hcl créé automatiquement"
-            else
-                log_error "Impossible de récupérer le nom du bucket"
-                log_info "Copiez backend.hcl.example vers backend.hcl et remplissez manuellement"
-                return 1
-            fi
-        else
-            log_error "Fichier backend.hcl.example manquant"
-            return 1
-        fi
+        log_success "backend.hcl généré automatiquement"
+    else
+        log_error "Impossible de récupérer le nom du bucket"
+        log_info "Assurez-vous que le backend est déployé"
+        return 1
     fi
 
     log_info "Initialisation Terraform infrastructure..."
@@ -383,12 +366,6 @@ EOF
     if [[ $? -eq 0 ]]; then
         save_state "infrastructure" "deployed"
         log_success "Infrastructure déployée avec succès"
-
-        # Afficher les informations importantes
-        echo ""
-        log_info "Informations de l'instance:"
-        terraform output
-        echo ""
 
         # Attendre que l'instance soit prête via AWS CLI
         local instance_id=$(terraform output -raw instance_id 2>/dev/null)
@@ -628,7 +605,7 @@ cmd_deploy_monitoring() {
 #################################################
 
 cmd_deploy_all() {
-    print_header "🚀 DÉPLOIEMENT COMPLET OCEANIAWATCH"
+    print_header "🚀 DÉPLOIEMENT COMPLET OCEANIA-WATCH"
 
     # Vérifications préalables
     check_prerequisites || exit 1
@@ -644,18 +621,26 @@ cmd_deploy_all() {
     # Déploiement séquentiel
     local failed=false
 
-    if [[ "$last_state" == "none" || "$last_state" == "destroyed" ]]; then
+    # Étape 1: Backend
+    if [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "" ]]; then
         deploy_backend || failed=true
     fi
 
-    if [[ "$failed" == false ]] && [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "backend" ]]; then
-        deploy_infrastructure || failed=true
-    fi
-
+    # Étape 2: Infrastructure
     if [[ "$failed" == false ]]; then
-        configure_instance || failed=true
+        if [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "backend" || "$last_state" == "" ]]; then
+            deploy_infrastructure || failed=true
+        fi
     fi
 
+    # Étape 3: Configuration
+    if [[ "$failed" == false ]]; then
+        if [[ "$last_state" != "monitoring" ]]; then
+            configure_instance || failed=true
+        fi
+    fi
+
+    # Étape 4: Monitoring
     if [[ "$failed" == false ]]; then
         deploy_monitoring || failed=true
     fi
@@ -828,6 +813,11 @@ cmd_destroy_all() {
     # 3. Nettoyage des fichiers locaux
     log_info "Nettoyage des fichiers locaux..."
     rm -f "$STATE_FILE"
+    
+    # Vider le fichier credentials
+    if [[ -f "$CREDENTIALS_FILE" ]]; then
+        > "$CREDENTIALS_FILE"
+    fi
 
     # Nettoyer les fichiers Terraform
     rm -rf "${TERRAFORM_BACKEND_DIR}/.terraform"

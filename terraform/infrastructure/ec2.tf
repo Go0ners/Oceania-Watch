@@ -12,7 +12,7 @@ resource "aws_instance" "main" {
   # Force IMDSv2 (protection SSRF)
   metadata_options {
     http_endpoint               = "enabled"
-    http_tokens                 = "required"  # Force IMDSv2
+    http_tokens                 = "required" # Force IMDSv2
     http_put_response_hop_limit = 1
     instance_metadata_tags      = "enabled"
   }
@@ -30,7 +30,7 @@ resource "aws_instance" "main" {
   }
 
   tags = {
-    Name    = "${var.project_name}-${var.environment}-app-server"
+    Name    = "${upper(substr(var.project_name, 0, 1))}${substr(var.project_name, 1, -1)}-${var.environment}-app-server"
     Purpose = "ApplicationServer"
   }
 

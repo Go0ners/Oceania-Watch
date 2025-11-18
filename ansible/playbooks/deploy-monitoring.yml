@@ -37,4 +37,6 @@
       ansible.builtin.debug:
         msg: "{{ item.container.Name }}: {{ item.container.State.Status }}"
       loop: "{{ containers_info.results }}"
+      loop_control:
+        label: "{{ item.container.Name }}"
       when: item.exists

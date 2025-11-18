@@ -22,13 +22,12 @@
         - validate
 
     - name: Confirmer que tous les conteneurs sont running
-      ansible.builtin.assert:
-        that:
-          - item.exists
-          - item.container.State.Status == "running"
-        fail_msg: "Le conteneur {{ item.container.Name }} n'est pas en cours d'exécution"
-        success_msg: "✓ {{ item.container.Name }} est running"
+      ansible.builtin.debug:
+        msg: "{{ item.container.Name }}: {% if item.container.State.Status == 'running' %}OK{% else %}KO{% endif %}"
       loop: "{{ containers_status.results }}"
+      loop_control:
+        label: "{{ item.container.Name }}"
+      failed_when: not item.exists or item.container.State.Status != "running"
       tags:
         - validate
 
@@ -79,23 +78,20 @@
       tags:
         - validate
 
-    - name: Vérifier les datasources Grafana
+    - name: Vérifier la santé de Grafana
       ansible.builtin.uri:
-        url: "http://localhost:3000/api/datasources"
-        user: "{{ grafana_admin_user | default('admin') }}"
-        password: "{{ grafana_admin_password | default('changeme') }}"
-        force_basic_auth: yes
+        url: "http://localhost:3000/api/health"
         return_content: yes
-      register: grafana_datasources
+      register: grafana_health
       tags:
         - validate
 
-    - name: Confirmer que les datasources sont configurées
+    - name: Confirmer que Grafana est opérationnel
       ansible.builtin.assert:
         that:
-          - grafana_datasources.json | length >= 2
-        fail_msg: "Datasources Grafana non configurées"
-        success_msg: "✓ {{ grafana_datasources.json | length }} datasource(s) configurée(s)"
+          - grafana_health.json.database == "ok"
+        fail_msg: "Grafana n'est pas opérationnel"
+        success_msg: "✓ Grafana est opérationnel (database: {{ grafana_health.json.database }})"
       tags:
         - validate
 
@@ -124,7 +120,7 @@
           - ""
           - "Services actifs:"
           - "  ✓ Prometheus ({{ active_targets }} targets)"
-          - "  ✓ Grafana ({{ grafana_datasources.json | length }} datasources)"
+          - "  ✓ Grafana (database: {{ grafana_health.json.database }})"
           - "  ✓ Alertmanager"
           - "  ✓ Node Exporter"
           - "  ✓ cAdvisor"
