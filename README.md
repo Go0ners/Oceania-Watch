@@ -536,7 +536,7 @@ Génère un nouveau mot de passe fort, met à jour Grafana et sauvegarde dans `.
 
 | Service | URL | Credentials | Description |
 |---------|-----|-------------|-------------|
-| **Grafana** | http://IP:3000 | admin/changeme | Dashboards et visualisation |
+| **Grafana** | http://IP:3000 | Voir `./oceania credentials` | Dashboards et visualisation |
 | **Prometheus** | http://IP:9090 | - | Métriques et requêtes PromQL |
 | **Alertmanager** | http://IP:9093 | - | Gestion des alertes |
 | **Node Exporter** | http://IP:9100/metrics | - | Métriques système brutes |
@@ -735,12 +735,7 @@ ansible/inventory/group_vars/vault.yml
 
 ### Bonnes Pratiques
 
-1. **Changer les mots de passe par défaut**
-   ```bash
-   # Grafana: admin/changeme → À CHANGER !
-   ```
-
-2. **Restreindre les IPs SSH**
+1. **Restreindre les IPs SSH**
    ```hcl
    # terraform/infrastructure/terraform.tfvars
    allowed_ssh_ips = ["VOTRE_IP/32"]  # Pas 0.0.0.0/0 !

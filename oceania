@@ -1071,7 +1071,7 @@ show_help() {
     printf "    ${BLUE}credentials${NC}           Afficher les credentials (URLs, logins, passwords)\n"
     echo "                          --regenerate Nouveau mot de passe Grafana"
     printf "    ${BLUE}status${NC}                Afficher l'état actuel du déploiement\n"
-    printf "    ${CYAN}help${NC}                  Afficher cette aide\n"
+    printf "    ${BLUE}help${NC}                  Afficher cette aide\n"
     printf "${YELLOW}OPTIONS:${NC}\n"
     echo "    -q, --quiet     Mode silencieux (pas d'interactions)"
     echo "    -h, --help      Afficher l'aide"

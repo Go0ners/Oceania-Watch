@@ -16,9 +16,11 @@ loki_version: "3.5.8"
 # Configuration Grafana
 #################################################
 grafana_admin_user: "admin"
-# IMPORTANT: Utiliser Ansible Vault pour le mot de passe !
+# Le mot de passe est généré automatiquement lors du déploiement
+# Pour utiliser un mot de passe personnalisé, décommentez :
+# grafana_admin_password: "VotreMotDePasseSecurise"
+# Ou utilisez Ansible Vault :
 # grafana_admin_password: "{{ vault_grafana_admin_password }}"
-grafana_admin_password: "changeme"  # À CHANGER IMMÉDIATEMENT !
 
 # URL racine Grafana (ajuster selon votre domaine)
 grafana_root_url: "http://{{ ansible_host }}:3000"
