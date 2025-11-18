@@ -20,6 +20,7 @@
 - [Installation et Déploiement](#-installation-et-déploiement)
 - [Commandes Disponibles](#-commandes-disponibles)
 - [Gestion du Cycle de Vie](#-gestion-du-cycle-de-vie)
+- [Gestion des Credentials](#-gestion-des-credentials)
 - [Monitoring et Observabilité](#-monitoring-et-observabilité)
 - [Variables de Configuration](#-variables-de-configuration)
 - [Sécurité](#-sécurité)
@@ -372,6 +373,12 @@ cd ../..
 ### Gestion
 
 ```bash
+# Afficher les credentials (URLs, logins, passwords)
+./oceania credentials
+
+# Régénérer le mot de passe Grafana
+./oceania credentials --regenerate
+
 # Voir l'état complet
 ./oceania status
 
@@ -397,10 +404,13 @@ Connexion SSH:
 
 Services de monitoring:
   Prometheus:    http://44.x.x.x:9090
-  Grafana:       http://44.x.x.x:3000 (admin/changeme)
+  Grafana:       http://44.x.x.x:3000
   Alertmanager:  http://44.x.x.x:9093
 
-⚠  N'oubliez pas de changer le mot de passe Grafana !
+Pour gérer l'instance:
+  ./oceania credentials - Afficher les logins/passwords
+  ./oceania status      - Voir l'état
+  ./oceania destroy     - Détruire l'infrastructure
 ```
 
 ---
@@ -447,6 +457,79 @@ aws ec2 wait instance-running --instance-ids $(cd terraform/infrastructure && te
 
 ---
 
+## 🔐 Gestion des Credentials
+
+### Génération Automatique
+
+Lors du déploiement de la stack monitoring, un mot de passe fort est automatiquement généré pour Grafana et sauvegardé dans `.oceania-credentials`.
+
+### Afficher les Credentials
+
+```bash
+./oceania credentials
+```
+
+**Affiche** :
+```
+🔐 CREDENTIALS OCEANIAWATCH
+
+Grafana:
+  URL:      http://44.x.x.x:3000
+  User:     admin
+  Password: XyZ123AbC456DeF789GhI012
+
+Prometheus:
+  URL:      http://44.x.x.x:9090
+  Auth:     None
+
+Alertmanager:
+  URL:      http://44.x.x.x:9093
+  Auth:     None
+
+Node Exporter:
+  URL:      http://44.x.x.x:9100/metrics
+
+cAdvisor:
+  URL:      http://44.x.x.x:8080
+
+Loki:
+  URL:      http://44.x.x.x:3100
+```
+
+### Régénérer le Mot de Passe Grafana
+
+```bash
+./oceania credentials --regenerate
+```
+
+Génère un nouveau mot de passe fort, met à jour Grafana et sauvegarde dans `.oceania-credentials`.
+
+### Fichier `.oceania-credentials`
+
+**Format JSON** :
+```json
+{
+  "generated_at": "2024-11-18T14:30:00Z",
+  "instance_ip": "44.x.x.x",
+  "grafana": {
+    "url": "http://44.x.x.x:3000",
+    "user": "admin",
+    "password": "XyZ123AbC456DeF789GhI012"
+  },
+  "prometheus": {
+    "url": "http://44.x.x.x:9090"
+  }
+}
+```
+
+**Sécurité** :
+- Fichier en texte clair (permissions 600)
+- Ajouté au `.gitignore`
+- Sauvegardé automatiquement dans `.backups/` lors des destroy
+- Ne jamais commiter ce fichier
+
+---
+
 ## 📊 Monitoring et Observabilité
 
 ### Accès aux Services
@@ -462,12 +545,20 @@ aws ec2 wait instance-running --instance-ids $(cd terraform/infrastructure && te
 
 ### Première Connexion Grafana
 
-1. Accéder à http://IP:3000
-2. Login : `admin` / `changeme`
-3. **Changer immédiatement le mot de passe**
+1. Récupérer les credentials :
+   ```bash
+   ./oceania credentials
+   ```
+
+2. Accéder à http://IP:3000
+
+3. Se connecter avec les credentials affichés
+
 4. Datasources pré-configurées :
    - Prometheus (par défaut)
    - Loki
+
+**Note** : Le mot de passe est généré automatiquement lors du déploiement. Utilisez `./oceania credentials --regenerate` pour le changer.
 
 ### Dashboards Recommandés
 
@@ -636,8 +727,9 @@ terraform/infrastructure/backend.hcl
 ansible/inventory/group_vars/monitoring.yml
 ansible/inventory/group_vars/vault.yml
 
-# État
+# État et Credentials
 .oceania-state
+.oceania-credentials
 .backups/
 ```
 
