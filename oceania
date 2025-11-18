@@ -1,0 +1,839 @@
+#!/usr/bin/env bash
+
+#################################################
+# OceaniaWatch - Script de déploiement unifié
+#################################################
+# Gestion simplifiée du cycle de vie complet
+# Commandes: deploy, destroy, status
+#################################################
+
+set -euo pipefail
+
+# Couleurs pour les messages
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m' # No Color
+
+# Répertoires du projet
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TERRAFORM_BACKEND_DIR="${SCRIPT_DIR}/terraform/backend"
+readonly TERRAFORM_INFRA_DIR="${SCRIPT_DIR}/terraform/infrastructure"
+readonly ANSIBLE_DIR="${SCRIPT_DIR}/ansible"
+readonly STATE_FILE="${SCRIPT_DIR}/.oceania-state"
+readonly BACKUP_DIR="${SCRIPT_DIR}/.backups"
+
+# Variables globales
+QUIET_MODE=false
+
+#################################################
+# Fonctions utilitaires
+#################################################
+
+print_header() {
+    printf "${CYAN}\n"
+    printf "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    printf "  %s\n" "$1"
+    printf "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    printf "${NC}\n"
+}
+
+log_info() {
+    printf "${BLUE}ℹ${NC}  %s\n" "$1"
+}
+
+log_success() {
+    printf "${GREEN}✓${NC}  %s\n" "$1"
+}
+
+log_warning() {
+    printf "${YELLOW}⚠${NC}  %s\n" "$1"
+}
+
+log_error() {
+    printf "${RED}✗${NC}  %s\n" "$1" >&2
+}
+
+spinner() {
+    local pid=$1
+    local message=$2
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+    if [[ "$QUIET_MODE" == true ]]; then
+        wait "$pid"
+        return $?
+    fi
+
+    while kill -0 "$pid" 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf " [%c] %s" "$spinstr" "$message"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep 0.1
+        printf "\r"
+    done
+
+    wait "$pid"
+    local exit_code=$?
+    printf "\r%-$(tput cols)s\r" ""
+    return $exit_code
+}
+
+confirm() {
+    local message=$1
+    local default=${2:-n}
+
+    if [[ "$default" == "y" ]]; then
+        local prompt="[Y/n]"
+    else
+        local prompt="[y/N]"
+    fi
+
+    printf "${YELLOW}?${NC}  %s %s " "$message" "$prompt"
+    read -r response
+
+    response=${response:-$default}
+    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+    [[ "$response" =~ ^(y|yes)$ ]]
+}
+
+confirm_destructive() {
+    local message=$1
+    local confirmation_word=$2
+
+    printf "${RED}⚠${NC}  %s\n" "$message"
+    printf "Tapez '${YELLOW}%s${NC}' pour confirmer: " "$confirmation_word"
+    read -r response
+
+    [[ "$response" == "$confirmation_word" ]]
+}
+
+check_prerequisites() {
+    log_info "Vérification des prérequis..."
+
+    local missing=()
+
+    command -v terraform >/dev/null 2>&1 || missing+=("terraform")
+    command -v ansible >/dev/null 2>&1 || missing+=("ansible")
+    command -v aws >/dev/null 2>&1 || missing+=("aws-cli")
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        log_error "Outils manquants: ${missing[*]}"
+        log_info "Installation requise:"
+        for tool in "${missing[@]}"; do
+            case $tool in
+                terraform) echo "  - Terraform: https://developer.hashicorp.com/terraform/downloads" ;;
+                ansible) echo "  - Ansible: pip install ansible" ;;
+                aws-cli) echo "  - AWS CLI: https://aws.amazon.com/cli/" ;;
+            esac
+        done
+        return 1
+    fi
+
+    log_success "Tous les prérequis sont installés"
+    return 0
+}
+
+check_aws_credentials() {
+    log_info "Vérification des credentials AWS..."
+
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+        log_error "Credentials AWS invalides ou manquants"
+        log_info "Configurez AWS CLI avec: aws configure"
+        return 1
+    fi
+
+    log_success "Credentials AWS validés"
+    return 0
+}
+
+save_state() {
+    local step=$1
+    local status=$2
+
+    mkdir -p "$(dirname "$STATE_FILE")"
+    echo "${step}:${status}:$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$STATE_FILE"
+}
+
+get_last_state() {
+    if [[ -f "$STATE_FILE" ]]; then
+        tail -n 1 "$STATE_FILE" | cut -d: -f1
+    else
+        echo "none"
+    fi
+}
+
+create_backup() {
+    local backup_name=$1
+
+    mkdir -p "$BACKUP_DIR"
+    local backup_path="${BACKUP_DIR}/backup-${backup_name}-$(date +%Y%m%d-%H%M%S)"
+
+    log_info "Création d'une sauvegarde: ${backup_name}"
+
+    # Backup Terraform state files
+    if [[ -f "${TERRAFORM_BACKEND_DIR}/terraform.tfstate" ]]; then
+        mkdir -p "${backup_path}/backend"
+        cp "${TERRAFORM_BACKEND_DIR}/terraform.tfstate" "${backup_path}/backend/"
+    fi
+
+    if [[ -f "${TERRAFORM_INFRA_DIR}/terraform.tfstate" ]]; then
+        mkdir -p "${backup_path}/infrastructure"
+        cp "${TERRAFORM_INFRA_DIR}/terraform.tfstate" "${backup_path}/infrastructure/"
+    fi
+
+    # Backup SSH keys
+    if [[ -d "$HOME/.ssh/oceania" ]]; then
+        mkdir -p "${backup_path}/ssh"
+        cp -r "$HOME/.ssh/oceania" "${backup_path}/ssh/"
+    fi
+
+    # Backup state file
+    if [[ -f "$STATE_FILE" ]]; then
+        cp "$STATE_FILE" "${backup_path}/"
+    fi
+
+    log_success "Sauvegarde créée: ${backup_path}"
+    echo "$backup_path"
+}
+
+#################################################
+# Fonctions de déploiement
+#################################################
+
+deploy_backend() {
+    print_header "Étape 1/3 - Déploiement du Backend Terraform"
+
+    cd "$TERRAFORM_BACKEND_DIR"
+
+    if [[ ! -f "terraform.tfvars" ]]; then
+        if [[ -f "terraform.tfvars.example" ]]; then
+            log_warning "terraform.tfvars non trouvé, copie de l'exemple"
+            cp terraform.tfvars.example terraform.tfvars
+            log_info "Éditez ${TERRAFORM_BACKEND_DIR}/terraform.tfvars puis relancez"
+            return 1
+        else
+            log_error "Fichier terraform.tfvars manquant dans ${TERRAFORM_BACKEND_DIR}"
+            return 1
+        fi
+    fi
+
+    log_info "Initialisation Terraform backend..."
+    terraform init -input=false >/dev/null 2>&1 &
+    spinner $! "Initialisation en cours..."
+
+    log_info "Validation de la configuration..."
+    terraform validate >/dev/null 2>&1
+
+    log_info "Application de l'infrastructure backend..."
+    terraform apply -auto-approve
+
+    if [[ $? -eq 0 ]]; then
+        save_state "backend" "deployed"
+        log_success "Backend déployé avec succès"
+
+        # Afficher les informations importantes
+        echo ""
+        log_info "Informations du backend:"
+        terraform output
+        echo ""
+
+        # Mettre à jour automatiquement le backend dans infrastructure/main.tf
+        local bucket_name=$(terraform output -raw s3_bucket_name 2>/dev/null)
+        if [[ -n "$bucket_name" ]]; then
+            log_info "Mise à jour du backend dans infrastructure/main.tf..."
+            cd "$TERRAFORM_INFRA_DIR"
+
+            # Mettre à jour le nom du bucket dans le fichier main.tf
+            sed -i.bak "s/bucket[[:space:]]*=[[:space:]]*\"oceania-watch-.*-tfstate-[a-z0-9]*\"/bucket       = \"${bucket_name}\"/" main.tf
+
+            # Supprimer le backup si la mise à jour a réussi
+            rm -f main.tf.bak
+
+            log_success "Backend mis à jour: ${bucket_name}"
+            cd "$TERRAFORM_BACKEND_DIR"
+        fi
+
+        return 0
+    else
+        log_error "Échec du déploiement du backend"
+        return 1
+    fi
+}
+
+deploy_infrastructure() {
+    print_header "Étape 2/3 - Déploiement de l'Infrastructure EC2"
+
+    cd "$TERRAFORM_INFRA_DIR"
+
+    if [[ ! -f "terraform.tfvars" ]]; then
+        if [[ -f "terraform.tfvars.example" ]]; then
+            log_warning "terraform.tfvars non trouvé, copie de l'exemple"
+            cp terraform.tfvars.example terraform.tfvars
+            log_info "Éditez ${TERRAFORM_INFRA_DIR}/terraform.tfvars puis relancez"
+            return 1
+        else
+            log_error "Fichier terraform.tfvars manquant dans ${TERRAFORM_INFRA_DIR}"
+            return 1
+        fi
+    fi
+
+    # Vérifier backend.hcl
+    if [[ ! -f "backend.hcl" ]]; then
+        if [[ -f "backend.hcl.example" ]]; then
+            log_warning "backend.hcl non trouvé"
+            log_info "Récupération du bucket depuis le backend..."
+
+            # Récupérer le nom du bucket depuis le backend
+            cd "$TERRAFORM_BACKEND_DIR"
+            BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null)
+            cd "$TERRAFORM_INFRA_DIR"
+
+            if [[ -n "$BUCKET_NAME" ]]; then
+                log_info "Création de backend.hcl avec bucket: $BUCKET_NAME"
+                cat > backend.hcl <<EOF
+bucket       = "$BUCKET_NAME"
+key          = "infrastructure/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true
+encrypt      = true
+EOF
+                log_success "backend.hcl créé automatiquement"
+            else
+                log_error "Impossible de récupérer le nom du bucket"
+                log_info "Copiez backend.hcl.example vers backend.hcl et remplissez manuellement"
+                return 1
+            fi
+        else
+            log_error "Fichier backend.hcl.example manquant"
+            return 1
+        fi
+    fi
+
+    log_info "Initialisation Terraform infrastructure..."
+    # Utiliser -reconfigure si .terraform n'existe pas (après un destroy)
+    if [[ ! -d ".terraform" ]]; then
+        terraform init -input=false -backend-config=backend.hcl -reconfigure >/dev/null 2>&1 &
+        spinner $! "Initialisation en cours..."
+        if [[ $? -ne 0 ]]; then
+            log_error "Échec de l'initialisation Terraform"
+            terraform init -input=false -backend-config=backend.hcl -reconfigure
+            return 1
+        fi
+    else
+        terraform init -input=false -backend-config=backend.hcl >/dev/null 2>&1 &
+        spinner $! "Initialisation en cours..."
+        if [[ $? -ne 0 ]]; then
+            log_error "Échec de l'initialisation Terraform"
+            terraform init -input=false -backend-config=backend.hcl
+            return 1
+        fi
+    fi
+
+    log_info "Validation de la configuration..."
+    terraform validate >/dev/null 2>&1
+
+    log_info "Application de l'infrastructure EC2..."
+    terraform apply -auto-approve
+
+    if [[ $? -eq 0 ]]; then
+        save_state "infrastructure" "deployed"
+        log_success "Infrastructure déployée avec succès"
+
+        # Afficher les informations importantes
+        echo ""
+        log_info "Informations de l'instance:"
+        terraform output
+        echo ""
+
+        # Attendre que l'instance soit prête via AWS CLI
+        local instance_id=$(terraform output -raw instance_id 2>/dev/null)
+        if [[ -n "$instance_id" ]]; then
+            log_info "Attente du démarrage de l'instance ${instance_id}..."
+
+            # Attendre que l'instance soit 'running'
+            aws ec2 wait instance-running --instance-ids "$instance_id" --no-cli-pager 2>/dev/null &
+            spinner $! "Instance en cours de démarrage..."
+
+            if [[ $? -eq 0 ]]; then
+                log_success "Instance en cours d'exécution"
+
+                # Attendre que les status checks passent (optionnel mais recommandé)
+                log_info "Attente des vérifications système..."
+                aws ec2 wait instance-status-ok --instance-ids "$instance_id" --no-cli-pager 2>/dev/null &
+                spinner $! "Vérifications système en cours..."
+
+                if [[ $? -eq 0 ]]; then
+                    log_success "Instance prête et accessible"
+                else
+                    log_warning "Vérifications système en attente (peut prendre quelques minutes)"
+                fi
+            else
+                log_warning "Impossible de vérifier l'état de l'instance"
+            fi
+        fi
+
+        return 0
+    else
+        log_error "Échec du déploiement de l'infrastructure"
+        return 1
+    fi
+}
+
+configure_instance() {
+    print_header "Étape 3/3 - Configuration Ansible de l'instance"
+
+    cd "$ANSIBLE_DIR"
+
+    log_info "Installation des collections Ansible..."
+    if [[ -f "requirements.yml" ]]; then
+        ansible-galaxy collection install -r requirements.yml >/dev/null 2>&1 &
+        spinner $! "Installation des collections..."
+    fi
+
+    log_info "Mise à jour de l'inventaire depuis Terraform..."
+    if [[ -f "update-inventory.sh" ]]; then
+        bash update-inventory.sh >/dev/null 2>&1
+    fi
+
+    log_info "Test de connectivité SSH..."
+    local max_retries=5
+    local retry=0
+
+    while [[ $retry -lt $max_retries ]]; do
+        if ansible all -m ansible.builtin.ping >/dev/null 2>&1; then
+            log_success "Connectivité SSH établie"
+            break
+        else
+            retry=$((retry + 1))
+            if [[ $retry -lt $max_retries ]]; then
+                log_warning "Tentative ${retry}/${max_retries} - Nouvelle tentative dans 10s..."
+                sleep 10
+            else
+                log_error "Impossible d'établir la connexion SSH"
+                return 1
+            fi
+        fi
+    done
+
+    log_info "Exécution des playbooks de configuration..."
+    ansible-playbook playbooks/setup-instance.yml
+
+    if [[ $? -eq 0 ]]; then
+        save_state "configuration" "deployed"
+        log_success "Configuration appliquée avec succès"
+
+        log_info "Validation de l'installation..."
+        ansible-playbook playbooks/validate-setup.yml
+
+        return 0
+    else
+        log_error "Échec de la configuration Ansible"
+        return 1
+    fi
+}
+
+#################################################
+# Commande DEPLOY
+#################################################
+
+cmd_deploy() {
+    print_header "🚀 DÉPLOIEMENT OCEANIAWATCH"
+
+    # Vérifications préalables
+    check_prerequisites || exit 1
+    check_aws_credentials || exit 1
+
+    # Créer une sauvegarde avant déploiement
+    local backup_path=$(create_backup "pre-deploy")
+
+    # Déterminer à quelle étape reprendre
+    local last_state=$(get_last_state)
+    log_info "État actuel: ${last_state}"
+
+    # Déploiement séquentiel
+    local failed=false
+
+    if [[ "$last_state" == "none" || "$last_state" == "destroyed" ]]; then
+        deploy_backend || failed=true
+    fi
+
+    if [[ "$failed" == false ]] && [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "backend" ]]; then
+        deploy_infrastructure || failed=true
+    fi
+
+    if [[ "$failed" == false ]]; then
+        configure_instance || failed=true
+    fi
+
+    # Résumé final
+    echo ""
+    if [[ "$failed" == false ]]; then
+        print_header "✓ DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
+
+        # Récupérer l'IP de connexion
+        cd "$TERRAFORM_INFRA_DIR"
+        local instance_ip=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
+        local ssh_key=$(terraform output -raw private_key_path 2>/dev/null || echo "N/A")
+
+        printf "${GREEN}Instance déployée et configurée !${NC}\n"
+        echo ""
+        echo "Connexion SSH:"
+        printf "  ${CYAN}ssh -i %s ec2-user@%s${NC}\n" "$ssh_key" "$instance_ip"
+        echo ""
+        echo "Pour gérer l'instance:"
+        echo "  ./oceania status    - Voir l'état"
+        echo "  ./oceania destroy   - Détruire l'infrastructure"
+        echo ""
+    else
+        print_header "✗ ÉCHEC DU DÉPLOIEMENT"
+        log_error "Le déploiement a échoué"
+        log_info "Sauvegarde disponible: ${backup_path}"
+        log_info "Consultez les logs ci-dessus pour plus de détails"
+        exit 1
+    fi
+}
+
+#################################################
+# Commande DESTROY (infrastructure seulement)
+#################################################
+
+cmd_destroy() {
+    print_header "💥 DESTRUCTION INFRASTRUCTURE"
+
+    printf "${YELLOW}ATTENTION: Cette action va détruire l'infrastructure EC2${NC}\n"
+    echo ""
+    echo "Cela inclut:"
+    echo "  - Instance EC2 et ressources associées"
+    echo "  - Clés SSH (sauvegardées avant suppression)"
+    echo ""
+    printf "${YELLOW}Le backend Terraform (S3, DynamoDB) sera conservé${NC}\n"
+    echo ""
+
+    if ! confirm "Voulez-vous détruire l'infrastructure EC2 ?" "n"; then
+        log_info "Destruction annulée"
+        exit 0
+    fi
+
+    # Créer une sauvegarde
+    local backup_path=$(create_backup "pre-destroy-infra")
+    log_success "Sauvegarde créée: ${backup_path}"
+
+    # Destruction de l'infrastructure EC2
+    log_info "Destruction de l'infrastructure EC2..."
+    cd "$TERRAFORM_INFRA_DIR"
+    if [[ -f "terraform.tfstate" ]] || terraform show >/dev/null 2>&1; then
+        terraform destroy -auto-approve
+        log_success "Infrastructure EC2 détruite"
+    else
+        log_warning "Aucune infrastructure EC2 trouvée"
+    fi
+
+    # Nettoyage des fichiers Terraform infrastructure
+    log_info "Nettoyage des fichiers locaux..."
+    rm -rf "${TERRAFORM_INFRA_DIR}/.terraform"
+    rm -f "${TERRAFORM_INFRA_DIR}/.terraform.lock.hcl"
+    rm -f "${TERRAFORM_INFRA_DIR}/terraform.tfstate"*
+
+    save_state "backend" "active"
+
+    echo ""
+    print_header "✓ DESTRUCTION TERMINÉE"
+    echo ""
+    log_success "Infrastructure EC2 détruite"
+    log_info "Backend Terraform conservé (S3 + DynamoDB)"
+    log_info "Sauvegarde: ${backup_path}"
+    echo ""
+    echo "Pour redéployer l'infrastructure:"
+    printf "  ${CYAN}./oceania deploy${NC}\n"
+    echo ""
+    echo "Pour détruire également le backend:"
+    printf "  ${CYAN}./oceania destroy-all${NC}\n"
+    echo ""
+}
+
+#################################################
+# Commande DESTROY-ALL (tout détruire)
+#################################################
+
+cmd_destroy_all() {
+    print_header "💥 DESTRUCTION COMPLÈTE OCEANIAWATCH"
+
+    printf "${RED}ATTENTION: Cette action va détruire TOUTE l'infrastructure${NC}\n"
+    echo ""
+    echo "Cela inclut:"
+    echo "  - Instance EC2 et ressources associées"
+    echo "  - Backend Terraform (S3, DynamoDB)"
+    echo "  - Clés SSH (sauvegardées avant suppression)"
+    echo ""
+    printf "${RED}CETTE ACTION EST IRRÉVERSIBLE !${NC}\n"
+    echo ""
+
+    if ! confirm_destructive "Cette action est irréversible" "DESTROY-ALL"; then
+        log_info "Destruction annulée"
+        exit 0
+    fi
+
+    # Créer une sauvegarde complète
+    local backup_path=$(create_backup "pre-destroy-all")
+    log_success "Sauvegarde complète créée: ${backup_path}"
+
+    # 1. Infrastructure EC2
+    log_info "Destruction de l'infrastructure EC2..."
+    cd "$TERRAFORM_INFRA_DIR"
+    if [[ -f "terraform.tfstate" ]] || terraform show >/dev/null 2>&1; then
+        terraform destroy -auto-approve
+        log_success "Infrastructure EC2 détruite"
+    else
+        log_warning "Aucune infrastructure EC2 trouvée"
+    fi
+
+    # 2. Backend Terraform
+    log_info "Destruction du backend Terraform..."
+    cd "$TERRAFORM_BACKEND_DIR"
+    if [[ -f "terraform.tfstate" ]] || terraform show >/dev/null 2>&1; then
+        # Vider le bucket S3
+        local bucket_name=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
+        if [[ -n "$bucket_name" ]]; then
+            log_info "Vidage du bucket S3: ${bucket_name}"
+            aws s3 rm "s3://${bucket_name}" --recursive --no-cli-pager 2>/dev/null || true
+
+            # Supprimer toutes les versions
+            aws s3api list-object-versions \
+                --bucket "$bucket_name" \
+                --query 'Versions[].{Key:Key,VersionId:VersionId}' \
+                --output text \
+                --no-cli-pager 2>/dev/null | \
+            while read -r key version; do
+                [[ -n "$key" ]] && aws s3api delete-object --bucket "$bucket_name" --key "$key" --version-id "$version" --no-cli-pager 2>/dev/null || true
+            done
+
+            # Supprimer les delete markers
+            aws s3api list-object-versions \
+                --bucket "$bucket_name" \
+                --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' \
+                --output text \
+                --no-cli-pager 2>/dev/null | \
+            while read -r key version; do
+                [[ -n "$key" ]] && aws s3api delete-object --bucket "$bucket_name" --key "$key" --version-id "$version" --no-cli-pager 2>/dev/null || true
+            done
+        fi
+
+        terraform destroy -auto-approve
+        log_success "Backend Terraform détruit"
+    else
+        log_warning "Aucun backend Terraform trouvé"
+    fi
+
+    # 3. Nettoyage des fichiers locaux
+    log_info "Nettoyage des fichiers locaux..."
+    rm -f "$STATE_FILE"
+
+    # Nettoyer les fichiers Terraform
+    rm -rf "${TERRAFORM_BACKEND_DIR}/.terraform"
+    rm -f "${TERRAFORM_BACKEND_DIR}/.terraform.lock.hcl"
+    rm -f "${TERRAFORM_BACKEND_DIR}/terraform.tfstate"*
+
+    rm -rf "${TERRAFORM_INFRA_DIR}/.terraform"
+    rm -f "${TERRAFORM_INFRA_DIR}/.terraform.lock.hcl"
+    rm -f "${TERRAFORM_INFRA_DIR}/terraform.tfstate"*
+
+    save_state "destroyed" "complete"
+
+    echo ""
+    print_header "✓ DESTRUCTION COMPLÈTE TERMINÉE"
+    echo ""
+    log_success "Toute l'infrastructure a été détruite"
+    log_info "Sauvegarde complète: ${backup_path}"
+    echo ""
+    echo "Les clés SSH et les fichiers de configuration ont été sauvegardés dans:"
+    printf "  ${CYAN}%s${NC}\n" "$backup_path"
+    echo ""
+}
+
+#################################################
+# Commande STATUS
+#################################################
+
+cmd_status() {
+    print_header "📊 ÉTAT OCEANIAWATCH"
+
+    local last_state=$(get_last_state)
+
+    echo "État actuel: ${last_state}"
+    echo ""
+
+    # Backend status
+    printf "${CYAN}Backend Terraform:${NC}\n"
+    cd "$TERRAFORM_BACKEND_DIR"
+    if [[ -d ".terraform" ]]; then
+        if terraform show >/dev/null 2>&1; then
+            printf "  ${GREEN}✓${NC} Déployé\n"
+            local bucket=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "N/A")
+            echo "  Bucket S3: ${bucket}"
+        else
+            printf "  ${YELLOW}⚠${NC} Initialisé mais non déployé\n"
+        fi
+    else
+        printf "  ${RED}✗${NC} Non initialisé\n"
+    fi
+    echo ""
+
+    # Infrastructure status
+    printf "${CYAN}Infrastructure EC2:${NC}\n"
+    cd "$TERRAFORM_INFRA_DIR"
+    if [[ -d ".terraform" ]]; then
+        if terraform show >/dev/null 2>&1; then
+            printf "  ${GREEN}✓${NC} Déployée\n"
+            local instance_ip=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
+            local instance_id=$(terraform output -raw instance_id 2>/dev/null || echo "N/A")
+            echo "  IP: ${instance_ip}"
+            echo "  ID: ${instance_id}"
+
+            # Vérifier l'état de l'instance
+            if [[ "$instance_id" != "N/A" ]]; then
+                local instance_state=$(aws ec2 describe-instances \
+                    --instance-ids "$instance_id" \
+                    --query 'Reservations[0].Instances[0].State.Name' \
+                    --output text 2>/dev/null || echo "unknown")
+                echo "  État: ${instance_state}"
+            fi
+        else
+            printf "  ${YELLOW}⚠${NC} Initialisée mais non déployée\n"
+        fi
+    else
+        printf "  ${RED}✗${NC} Non initialisée\n"
+    fi
+    echo ""
+
+    # Configuration status
+    printf "${CYAN}Configuration Ansible:${NC}\n"
+    cd "$ANSIBLE_DIR"
+    if ansible all -m ansible.builtin.ping >/dev/null 2>&1; then
+        printf "  ${GREEN}✓${NC} Instance accessible\n"
+
+        # Vérifier Docker
+        if ansible all -m ansible.builtin.shell -a "docker --version" >/dev/null 2>&1; then
+            printf "  ${GREEN}✓${NC} Docker installé\n"
+        else
+            printf "  ${RED}✗${NC} Docker non installé\n"
+        fi
+    else
+        printf "  ${YELLOW}⚠${NC} Instance non accessible\n"
+    fi
+    echo ""
+
+    # Sauvegardes
+    if [[ -d "$BACKUP_DIR" ]]; then
+        local backup_count=$(find "$BACKUP_DIR" -type d -name "backup-*" | wc -l)
+        printf "${CYAN}Sauvegardes:${NC}\n"
+        echo "  ${backup_count} sauvegarde(s) disponible(s)"
+        if [[ $backup_count -gt 0 ]]; then
+            echo "  Dernière: $(ls -t "$BACKUP_DIR" | head -1)"
+        fi
+    fi
+}
+
+#################################################
+# Aide et usage
+#################################################
+
+show_help() {
+    printf "${CYAN}OceaniaWatch - Script de déploiement unifié${NC}\n"
+    echo ""
+    printf "${YELLOW}USAGE:${NC}\n"
+    echo "    ./oceania <commande> [options]"
+    echo ""
+    printf "${YELLOW}COMMANDES:${NC}\n"
+    printf "    ${GREEN}deploy${NC}      Déployer l'infrastructure complète de A à Z\n"
+    echo "                  - Backend Terraform (S3 + DynamoDB)"
+    echo "                  - Infrastructure EC2 (instance, réseau, SSH)"
+    echo "                  - Configuration Ansible (Docker, outils)"
+    echo ""
+    printf "    ${RED}destroy${NC}     Détruire l'infrastructure EC2 uniquement\n"
+    echo "                  - Suppression instance EC2 et ressources associées"
+    echo "                  - Conservation du backend Terraform (S3, DynamoDB)"
+    echo "                  - Possibilité de redéployer rapidement"
+    echo ""
+    printf "    ${RED}destroy-all${NC} Détruire TOUTE l'infrastructure\n"
+    echo "                  - Suppression EC2 + Backend Terraform"
+    echo "                  - Sauvegarde automatique avant destruction"
+    echo "                  - Action irréversible (confirmation requise)"
+    echo ""
+    printf "    ${BLUE}status${NC}      Afficher l'état actuel du déploiement\n"
+    echo "                  - État du backend Terraform"
+    echo "                  - État de l'infrastructure EC2"
+    echo "                  - État de la configuration Ansible"
+    echo ""
+    printf "    ${CYAN}help${NC}        Afficher cette aide\n"
+    echo ""
+    printf "${YELLOW}OPTIONS:${NC}\n"
+    echo "    -q, --quiet     Mode silencieux (pas d'interactions)"
+    echo "    -h, --help      Afficher l'aide"
+}
+
+#################################################
+# Main
+#################################################
+
+main() {
+    # Pas d'arguments = aide
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+
+    # Parse des options globales
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -q|--quiet)
+                QUIET_MODE=true
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            deploy|destroy|destroy-all|status|help)
+                local command=$1
+                shift
+                break
+                ;;
+            *)
+                log_error "Commande inconnue: $1"
+                echo ""
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+
+    # Exécution de la commande
+    case ${command:-help} in
+        deploy)
+            cmd_deploy "$@"
+            ;;
+        destroy)
+            cmd_destroy "$@"
+            ;;
+        destroy-all)
+            cmd_destroy_all "$@"
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        help)
+            show_help
+            ;;
+        *)
+            log_error "Commande inconnue: $command"
+            echo ""
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# Point d'entrée
+main "$@"

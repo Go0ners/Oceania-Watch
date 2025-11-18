@@ -1,0 +1,150 @@
+---
+- name: Installer les dépendances Docker
+  ansible.builtin.dnf:
+    name:
+      - dnf-plugins-core
+    state: present
+  tags:
+    - docker
+
+- name: Désinstaller l'ancien Docker
+  ansible.builtin.dnf:
+    name:
+      - docker
+      - docker-client
+      - docker-client-latest
+      - docker-common
+      - docker-latest
+      - docker-latest-logrotate
+      - docker-logrotate
+      - docker-engine
+    state: absent
+  tags:
+    - docker
+
+- name: Ajouter le dépôt Docker officiel
+  ansible.builtin.yum_repository:
+    name: docker-ce-stable
+    description: Docker CE Stable - $basearch
+    baseurl: https://download.docker.com/linux/centos/9/$basearch/stable
+    enabled: yes
+    gpgcheck: yes
+    gpgkey: https://download.docker.com/linux/centos/gpg
+  tags:
+    - docker
+
+- name: Installer Docker CE (version 29.0)
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+  tags:
+    - docker
+
+- name: Créer le répertoire de configuration Docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+  tags:
+    - docker
+
+- name: Configurer le daemon Docker
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+    owner: root
+    group: root
+  notify: Redémarrer Docker
+  tags:
+    - docker
+
+- name: Démarrer et activer le service Docker
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - docker
+
+- name: Ajouter les utilisateurs au groupe docker
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: yes
+  loop: "{{ docker_users }}"
+  notify: Réinitialiser la connexion SSH
+  tags:
+    - docker
+
+- name: Télécharger Docker Compose
+  ansible.builtin.get_url:
+    url: "https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-x86_64"
+    dest: /usr/local/bin/docker-compose
+    mode: '0755'
+    owner: root
+    group: root
+    force: yes
+  tags:
+    - docker
+
+- name: Créer un lien symbolique pour docker compose
+  ansible.builtin.file:
+    src: /usr/local/bin/docker-compose
+    dest: /usr/bin/docker-compose
+    state: link
+  tags:
+    - docker
+
+- name: Attendre que Docker soit complètement démarré
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+  register: docker_service
+  until: docker_service.status.ActiveState == "active"
+  retries: 5
+  delay: 3
+  tags:
+    - docker
+
+- name: Vérifier que Docker fonctionne (récupérer les infos)
+  community.docker.docker_host_info:
+  register: docker_info
+  retries: 3
+  delay: 5
+  until: docker_info is succeeded
+  tags:
+    - docker
+
+- name: Afficher les informations Docker
+  ansible.builtin.debug:
+    msg: 
+      - "Docker version: {{ docker_info.host_info.ServerVersion }}"
+      - "Docker installé avec succès"
+  tags:
+    - docker
+
+- name: Tester Docker avec l'image hello-world
+  community.docker.docker_container:
+    name: test-hello-world
+    image: hello-world
+    state: started
+    detach: false
+    cleanup: true
+    output_logs: true
+  register: hello_world_test
+  tags:
+    - docker
+    - docker-test
+
+- name: Supprimer le conteneur de test
+  community.docker.docker_container:
+    name: test-hello-world
+    state: absent
+  tags:
+    - docker
+    - docker-test

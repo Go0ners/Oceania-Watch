@@ -1,0 +1,9 @@
+# Backend configuration for Terraform
+# Copy this file to backend.hcl and fill with your values
+# DO NOT commit backend.hcl to Git
+
+bucket       = "your-bucket-name-here"
+key          = "infrastructure/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true
+encrypt      = true

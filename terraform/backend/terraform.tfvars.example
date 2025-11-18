@@ -1,0 +1,13 @@
+# Copier ce fichier vers terraform.tfvars et ajuster les valeurs
+
+# Nom du projet (obligatoire)
+project_name = "oceania-watch"
+
+# Environnement
+environment = "dev"
+
+# Région AWS
+aws_region = "eu-west-1"
+
+# Activer le versioning S3
+enable_versioning = true

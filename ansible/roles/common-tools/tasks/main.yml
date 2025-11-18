@@ -1,0 +1,52 @@
+---
+# Remplacer curl-minimal par curl sur Amazon Linux 2023
+- name: Vérifier si curl-minimal est installé
+  ansible.builtin.shell: rpm -q curl-minimal
+  register: curl_minimal_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - common-tools
+
+- name: Remplacer curl-minimal par curl
+  ansible.builtin.dnf:
+    name:
+      - curl-minimal
+    state: absent
+  when: curl_minimal_check.rc == 0 and 'curl' in system_packages
+  tags:
+    - common-tools
+
+- name: Installer les outils système de base
+  ansible.builtin.dnf:
+    name: "{{ system_packages }}"
+    state: present
+  tags:
+    - common-tools
+
+- name: Configurer la timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+  tags:
+    - common-tools
+
+- name: Configurer le hostname
+  ansible.builtin.hostname:
+    name: "{{ hostname }}"
+  tags:
+    - common-tools
+
+- name: Mettre à jour /etc/hosts avec le nouveau hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.0\.1'
+    line: "127.0.0.1 localhost {{ hostname }}"
+    state: present
+  tags:
+    - common-tools
+
+- name: Afficher la confirmation d'installation
+  ansible.builtin.debug:
+    msg: "Outils système installés avec succès"
+  tags:
+    - common-tools

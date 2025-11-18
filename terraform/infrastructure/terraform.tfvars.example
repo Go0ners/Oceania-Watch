@@ -1,0 +1,26 @@
+# Copier ce fichier vers terraform.tfvars et ajuster les valeurs
+
+# Région AWS
+aws_region = "us-east-1"
+
+# Nom du projet (doit correspondre à l'étape 1)
+project_name = "oceania-watch"
+
+# Environnement
+environment = "dev"
+
+# IPs autorisées pour SSH (remplacer par votre IP publique)
+allowed_ssh_ips = ["1.2.3.4/32"]  # Votre IP publique
+
+# Configuration EC2
+instance_type = "t3.large"
+root_volume_size = 100
+root_volume_type = "gp3"
+
+# Options avancées
+enable_public_ip = true
+enable_detailed_monitoring = false
+enable_termination_protection = false
+
+# Répertoire des clés SSH
+ssh_key_directory = "~/.ssh/oceania"

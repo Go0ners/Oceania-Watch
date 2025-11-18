@@ -1,0 +1,12 @@
+---
+- name: Redémarrer le système si nécessaire
+  ansible.builtin.reboot:
+    msg: "Redémarrage initié par Ansible après mise à jour système"
+    connect_timeout: 5
+    reboot_timeout: 600
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime
+  when: 
+    - system_update.changed
+    - reboot_required.stat.exists | default(false)

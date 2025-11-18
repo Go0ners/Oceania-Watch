@@ -1,0 +1,238 @@
+# OceaniaWatch - .gitignore
+
+#################################################
+# Script oceania - fichiers générés
+#################################################
+.oceania-state
+.backups/
+
+#################################################
+# Terraform
+#################################################
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files (contiennent des infos sensibles)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Variables files (contiennent des valeurs sensibles)
+*.tfvars
+*.tfvars.json
+
+# Backend configuration files (contiennent bucket name spécifique)
+backend.hcl
+**/backend.hcl
+
+# Override files (utilisés pour overrides locaux)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# Terraform lock files (optionnel - à commenter si vous voulez les versionner)
+# .terraform.lock.hcl
+
+#################################################
+# Ansible
+#################################################
+# Retry files
+*.retry
+
+# Inventaires dynamiques générés
+ansible/inventory/terraform.json
+ansible/inventory/production.yml
+
+# Vault password files
+.vault_pass
+vault_pass.txt
+.vault_password
+
+# Ansible galaxy downloaded roles/collections
+ansible/roles/downloaded/
+ansible/collections/
+
+#################################################
+# Claude
+#################################################
+# Local .claude directories
+**/.claude/*
+
+#################################################
+# SSH Keys (CRITIQUE - NE JAMAIS COMMITER)
+#################################################
+*.pem
+*.key
+*.ppk
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.pub
+authorized_keys
+
+# Répertoire SSH
+.ssh/
+**/.ssh/
+
+#################################################
+# AWS Credentials (CRITIQUE)
+#################################################
+.aws/
+credentials
+*.credentials
+aws_credentials
+.aws_credentials
+
+#################################################
+# Secrets & Sensitive Data
+#################################################
+# Environment files
+.env
+.env.*
+*.env
+
+# Secret files
+secrets/
+*.secret
+*.secrets
+secret.yml
+secrets.yml
+
+# Configuration locale
+local.conf
+*.local
+
+#################################################
+# IDE & Editors
+#################################################
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (IntelliJ, PyCharm, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+#################################################
+# OS Files
+#################################################
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Thumbnails
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Windows
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+
+#################################################
+# Logs & Temporary Files
+#################################################
+*.log
+logs/
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+#################################################
+# Build & Distribution
+#################################################
+dist/
+build/
+*.egg-info/
+.eggs/
+
+#################################################
+# Testing
+#################################################
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+
+#################################################
+# Documentation Build
+#################################################
+_build/
+docs/_build/
+
+#################################################
+# Archives
+#################################################
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.rar
+*.7z
+
+#################################################
+# Backups généraux (en plus de .backups/)
+#################################################
+*.bak
+*.backup
+*~
+
+#################################################
+# Notes personnelles (optionnel)
+#################################################
+# Décommentez si vous voulez ignorer vos notes perso
+# NOTES.md
+# TODO.txt
+# notes/

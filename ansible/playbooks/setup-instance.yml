@@ -1,0 +1,38 @@
+---
+- name: Configuration complète de l'instance Oceania
+  hosts: oceania
+  become: yes
+  
+  pre_tasks:
+    - name: Afficher les informations de l'hôte
+      ansible.builtin.debug:
+        msg: "Configuration de {{ inventory_hostname }} ({{ ansible_host }})"
+    
+    - name: Vérifier la connectivité
+      ansible.builtin.ping:
+    
+    - name: Collecter les facts
+      ansible.builtin.setup:
+  
+  roles:
+    - system-update
+    - docker
+    - common-tools
+  
+  post_tasks:
+    - name: Récupérer les informations Docker
+      community.docker.docker_host_info:
+      register: docker_info
+    
+    - name: Afficher la version de Docker
+      ansible.builtin.debug:
+        msg: "Docker version: {{ docker_info.host_info.ServerVersion }}"
+    
+    - name: Vérifier Docker Compose
+      ansible.builtin.stat:
+        path: /usr/local/bin/docker-compose
+      register: compose_binary
+    
+    - name: Confirmer l'installation de Docker Compose
+      ansible.builtin.debug:
+        msg: "Docker Compose installé: {{ compose_binary.stat.exists }}"

@@ -1,0 +1,115 @@
+---
+- name: Rollback de l'installation Docker
+  hosts: oceania
+  become: yes
+  
+  tasks:
+    - name: Récupérer la liste des conteneurs
+      community.docker.docker_container_info:
+      register: containers
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Arrêter tous les conteneurs Docker
+      community.docker.docker_container:
+        name: "{{ item.Name }}"
+        state: stopped
+      loop: "{{ containers.containers }}"
+      when: containers.containers is defined
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Supprimer tous les conteneurs
+      community.docker.docker_container:
+        name: "{{ item.Name }}"
+        state: absent
+      loop: "{{ containers.containers }}"
+      when: containers.containers is defined
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Récupérer la liste des images Docker
+      community.docker.docker_image_info:
+      register: images
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Supprimer toutes les images Docker
+      community.docker.docker_image:
+        name: "{{ item.RepoTags[0] }}"
+        state: absent
+        force_absent: yes
+      loop: "{{ images.images }}"
+      when: 
+        - images.images is defined
+        - item.RepoTags is defined
+        - item.RepoTags | length > 0
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Arrêter le service Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: stopped
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Désactiver le service Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: no
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Désinstaller Docker
+      ansible.builtin.dnf:
+        name: docker
+        state: absent
+      tags:
+        - rollback
+    
+    - name: Supprimer Docker Compose
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/bin/docker-compose
+        - /usr/bin/docker-compose
+      tags:
+        - rollback
+    
+    - name: Supprimer la configuration Docker
+      ansible.builtin.file:
+        path: /etc/docker
+        state: absent
+      tags:
+        - rollback
+    
+    - name: Supprimer les données Docker
+      ansible.builtin.file:
+        path: /var/lib/docker
+        state: absent
+      tags:
+        - rollback
+    
+    - name: Retirer ec2-user du groupe docker
+      ansible.builtin.user:
+        name: ec2-user
+        groups: docker
+        append: no
+      ignore_errors: yes
+      tags:
+        - rollback
+    
+    - name: Afficher le message de confirmation
+      ansible.builtin.debug:
+        msg: "Rollback Docker terminé avec succès"
+      tags:
+        - rollback

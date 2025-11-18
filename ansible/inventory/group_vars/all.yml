@@ -1,0 +1,28 @@
+# Configuration Docker
+docker_edition: ce
+docker_users:
+  - ec2-user
+
+# Configuration système
+timezone: "UTC"
+system_packages:
+  - htop
+  - vim
+  - git
+  - curl
+  - wget
+  - unzip
+  - net-tools
+  - tree
+  - jq
+
+# Configuration hostname
+hostname: "{{ project_name }}-{{ env }}"
+
+# Configuration Docker daemon
+docker_daemon_config:
+  log-driver: "json-file"
+  log-opts:
+    max-size: "10m"
+    max-file: "3"
+  storage-driver: "overlay2"

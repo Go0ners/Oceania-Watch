@@ -1,0 +1,12 @@
+---
+system_packages:
+  - git
+  - wget
+  - unzip
+  - vim
+  - htop
+  - tree
+  - jq
+
+timezone: "UTC"
+hostname: "oceania-prod"

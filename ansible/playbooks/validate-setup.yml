@@ -1,0 +1,129 @@
+---
+- name: Valider la configuration de l'instance
+  hosts: oceania
+  become: yes
+  
+  tasks:
+    - name: Récupérer les informations Docker
+      community.docker.docker_host_info:
+      register: docker_info
+      tags:
+        - validate
+    
+    - name: Vérifier la version de Docker
+      ansible.builtin.assert:
+        that:
+          - docker_info.host_info.ServerVersion is defined
+          - docker_info.host_info.ServerVersion is version('20.0', '>=')
+        fail_msg: "Docker n'est pas installé ou version trop ancienne"
+        success_msg: "Docker {{ docker_info.host_info.ServerVersion }} installé avec succès"
+      tags:
+        - validate
+    
+    - name: Vérifier que Docker Compose existe
+      ansible.builtin.stat:
+        path: /usr/local/bin/docker-compose
+      register: compose_binary
+      tags:
+        - validate
+    
+    - name: Confirmer l'installation de Docker Compose
+      ansible.builtin.assert:
+        that:
+          - compose_binary.stat.exists
+          - compose_binary.stat.executable
+        fail_msg: "Docker Compose n'est pas installé"
+        success_msg: "Docker Compose installé avec succès"
+      tags:
+        - validate
+    
+    - name: Vérifier que Docker est actif
+      ansible.builtin.systemd:
+        name: docker
+      register: docker_service
+      check_mode: yes
+      tags:
+        - validate
+    
+    - name: Confirmer que Docker est actif et enabled
+      ansible.builtin.assert:
+        that:
+          - docker_service.status.ActiveState == "active"
+          - docker_service.status.UnitFileState == "enabled"
+        fail_msg: "Le service Docker n'est pas actif ou enabled"
+        success_msg: "Service Docker actif et enabled"
+      tags:
+        - validate
+    
+    - name: Récupérer les informations sur l'utilisateur ec2-user
+      ansible.builtin.getent:
+        database: passwd
+        key: ec2-user
+      register: user_info
+      tags:
+        - validate
+    
+    - name: Récupérer les groupes de ec2-user
+      ansible.builtin.getent:
+        database: group
+        key: docker
+      register: docker_group
+      tags:
+        - validate
+    
+    - name: Vérifier que ec2-user est dans le groupe docker
+      ansible.builtin.assert:
+        that:
+          - "'ec2-user' in docker_group.ansible_facts.getent_group.docker[2].split(',')"
+        fail_msg: "ec2-user n'est pas dans le groupe docker"
+        success_msg: "ec2-user est bien dans le groupe docker"
+      tags:
+        - validate
+    
+    - name: Tester Docker avec hello-world
+      community.docker.docker_container:
+        name: test-hello-world-validation
+        image: hello-world
+        state: started
+        detach: false
+        cleanup: true
+        output_logs: true
+      register: hello_world_test
+      tags:
+        - validate
+    
+    - name: Nettoyer le conteneur de test
+      community.docker.docker_container:
+        name: test-hello-world-validation
+        state: absent
+      tags:
+        - validate
+    
+    - name: Récupérer les facts sur les paquets installés
+      ansible.builtin.package_facts:
+        manager: auto
+      tags:
+        - validate
+    
+    - name: Vérifier que les outils système sont installés
+      ansible.builtin.assert:
+        that:
+          - "'htop' in ansible_facts.packages"
+          - "'vim' in ansible_facts.packages or 'vim-enhanced' in ansible_facts.packages"
+          - "'git' in ansible_facts.packages"
+        fail_msg: "Certains outils système ne sont pas installés"
+        success_msg: "Tous les outils système sont installés"
+      tags:
+        - validate
+    
+    - name: Afficher le résumé des validations
+      ansible.builtin.debug:
+        msg:
+          - "✅ Docker version: {{ docker_info.host_info.ServerVersion }}"
+          - "✅ Docker Compose: installé"
+          - "✅ Service Docker: actif et enabled"
+          - "✅ Utilisateur ec2-user: dans le groupe docker"
+          - "✅ Test hello-world: réussi"
+          - "✅ Outils système: installés"
+      tags:
+        - validate
