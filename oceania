@@ -645,6 +645,30 @@ cmd_deploy_all() {
         deploy_monitoring || failed=true
     fi
 
+    # Étape 5: DNS (Route53) - si activé
+    if [[ "$failed" == false ]]; then
+        cd "$TERRAFORM_INFRA_DIR"
+        local dns_enabled=$(terraform output -raw dns_enabled 2>/dev/null || echo "false")
+        if [[ "$dns_enabled" == "true" ]]; then
+            log_info "Module DNS activé, déploiement des enregistrements Route53..."
+            deploy_dns || failed=true
+        else
+            log_info "Module DNS désactivé, skip étape DNS"
+        fi
+    fi
+
+    # Étape 6: Traefik + CoreDNS - si DNS activé
+    if [[ "$failed" == false ]]; then
+        cd "$TERRAFORM_INFRA_DIR"
+        local dns_enabled=$(terraform output -raw dns_enabled 2>/dev/null || echo "false")
+        if [[ "$dns_enabled" == "true" ]]; then
+            log_info "Déploiement de Traefik + CoreDNS..."
+            deploy_traefik_stack || failed=true
+        else
+            log_info "Module DNS désactivé, skip étape Traefik"
+        fi
+    fi
+
     # Résumé final
     echo ""
     if [[ "$failed" == false ]]; then
@@ -654,17 +678,30 @@ cmd_deploy_all() {
         cd "$TERRAFORM_INFRA_DIR"
         local instance_ip=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
         local ssh_key=$(terraform output -raw private_key_path 2>/dev/null || echo "N/A")
+        local dns_enabled=$(terraform output -raw dns_enabled 2>/dev/null || echo "false")
+        local base_domain=$(terraform output -raw dns_base_domain 2>/dev/null || echo "")
 
         printf "${GREEN}Infrastructure complète déployée et configurée !${NC}\n"
         echo ""
         echo "Connexion SSH:"
         printf "  ${CYAN}ssh -i %s ec2-user@%s${NC}\n" "$ssh_key" "$instance_ip"
         echo ""
-        echo "Services de monitoring:"
-        printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
-        printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
-        printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
-        echo ""
+
+        if [[ "$dns_enabled" == "true" && -n "$base_domain" ]]; then
+            echo "Services de monitoring (HTTPS):"
+            printf "  ${CYAN}Prometheus:    https://prometheus.%s${NC}\n" "$base_domain"
+            printf "  ${CYAN}Grafana:       https://grafana.%s${NC}\n" "$base_domain"
+            printf "  ${CYAN}Alertmanager:  https://alertmanager.%s${NC}\n" "$base_domain"
+            printf "  ${CYAN}Traefik:       https://traefik.%s/dashboard/${NC}\n" "$base_domain"
+            echo ""
+        else
+            echo "Services de monitoring (HTTP):"
+            printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
+            echo ""
+        fi
+
         echo "Pour gérer l'instance:"
         echo "  ./oceania credentials - Afficher les logins/passwords"
         echo "  ./oceania status      - Voir l'état"

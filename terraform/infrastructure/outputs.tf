@@ -81,6 +81,11 @@ output "project_name" {
 }
 
 # DNS Module Outputs (conditionnels)
+output "dns_enabled" {
+  description = "Whether DNS module is enabled"
+  value       = var.enable_dns_module
+}
+
 output "dns_zone_id" {
   description = "Route53 hosted zone ID"
   value       = var.enable_dns_module ? module.dns[0].zone_id : null

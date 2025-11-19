@@ -23,6 +23,7 @@ resource "aws_iam_role" "ec2" {
 
 # IAM Policy pour Route53 (Traefik DNS Challenge)
 resource "aws_iam_policy" "route53_dns_challenge" {
+  count       = var.enable_dns_module ? 1 : 0
   name        = "${var.project_name}-${var.environment}-route53-dns-challenge"
   description = "Allow Traefik to perform Route53 DNS challenge for Let's Encrypt"
 
@@ -44,7 +45,7 @@ resource "aws_iam_policy" "route53_dns_challenge" {
           "route53:ChangeResourceRecordSets",
           "route53:ListResourceRecordSets"
         ]
-        Resource = var.enable_dns_module ? ["arn:aws:route53:::hostedzone/${module.dns[0].zone_id}"] : []
+        Resource = "arn:aws:route53:::hostedzone/${module.dns[0].zone_id}"
       },
       {
         Sid    = "Route53ListHostedZones"
@@ -68,7 +69,7 @@ resource "aws_iam_policy" "route53_dns_challenge" {
 resource "aws_iam_role_policy_attachment" "route53_dns_challenge" {
   count      = var.enable_dns_module ? 1 : 0
   role       = aws_iam_role.ec2.name
-  policy_arn = aws_iam_policy.route53_dns_challenge.arn
+  policy_arn = aws_iam_policy.route53_dns_challenge[0].arn
 }
 
 # Instance Profile pour l'EC2

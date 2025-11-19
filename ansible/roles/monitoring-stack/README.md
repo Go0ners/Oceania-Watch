@@ -20,7 +20,7 @@ Role Ansible pour déployer une stack de monitoring complète avec Prometheus, G
 > **Note**: Les versions sont automatiquement mises à jour lors du déploiement.
 > Consultez `/opt/monitoring/versions.txt` sur le serveur pour les versions déployées.
 
-**Dernière vérification**: 2025-11-18
+**Dernière vérification**: 2025-11-19
 
 - **Prometheus**: v3.x
 - **Grafana**: v12.x

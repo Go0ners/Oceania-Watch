@@ -62,6 +62,6 @@ output "dns_config" {
       }
     }
     wildcard_fqdn = aws_route53_record.wildcard.fqdn
-    aws_region    = data.aws_region.current.name
+    aws_region    = data.aws_region.current.id
   })
 }

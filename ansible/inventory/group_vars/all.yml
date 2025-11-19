@@ -26,3 +26,7 @@ docker_daemon_config:
     max-size: "10m"
     max-file: "3"
   storage-driver: "overlay2"
+
+# Configuration Traefik ACME (Let's Encrypt)
+traefik_acme_email: "admin@twca.cloud"  # Modifier avec votre email
+traefik_use_staging_ca: true  # Mettre false pour les certificats de production
