@@ -81,7 +81,7 @@ Le projet combine :
 │  ┌────────────────────┐                                             │
 │  │  Backend Terraform │                                             │
 │  │  ┌──────────────┐  │  State Storage + Versioning                 │
-│  │  │ S3 + DynamoDB│  │                                             │
+│  │  │ S3 (native)  │  │  Native S3 state locking (use_lockfile)     │
 │  │  └──────────────┘  │                                             │
 │  └────────────────────┘                                             │
 │           │                                                         │
@@ -157,8 +157,8 @@ Le projet combine :
 │  Étape 1/4: Backend Terraform          │
 │  ├─ Création bucket S3                 │
 │  ├─ Activation versioning              │
-│  ├─ Configuration S3 locking           │
-│  └─ Création table DynamoDB            │
+│  ├─ Configuration chiffrement AES256   │
+│  └─ Configuration S3 native locking    │
 └────────┬───────────────────────────────┘
          │
          ▼
@@ -314,13 +314,13 @@ aws sts get-caller-identity
 
 ### Permissions IAM Requises
 
-**Backend (S3 + DynamoDB)** :
-- `s3:*`, `dynamodb:*`
+**Backend (S3 avec native locking)** :
+- `s3:*`
 
 **Infrastructure (EC2 + Réseau)** :
 - `ec2:*`, `vpc:*`
 
-**Recommandation** : PowerUserAccess ou EC2FullAccess + S3FullAccess + DynamoDBFullAccess
+**Recommandation** : PowerUserAccess ou EC2FullAccess + S3FullAccess
 
 ---
 
@@ -455,7 +455,7 @@ aws ec2 wait instance-running --instance-ids $(cd terraform/infrastructure && te
 ```bash
 # Détruire infrastructure (garder backend)
 ./oceania destroy
-# Coût: ~$1/mois (S3 + DynamoDB seulement)
+# Coût: ~$1/mois (S3 seulement)
 
 # Redéployer rapidement
 ./oceania deploy-infra
@@ -843,7 +843,7 @@ checkov -d terraform/
 | **Instance t3.large** | ~$60 | $0 | ~$60 |
 | **EBS 100GB gp3** | ~$8 | ~$8 | ~$8 |
 | **Elastic IP** | $0 | $0 | $0 |
-| **S3 + DynamoDB** | <$1 | <$1 | <$1 |
+| **S3 (backend)** | <$1 | <$1 | <$1 |
 | **Monitoring (CPU/RAM)** | - | - | +$0 (même instance) |
 | **Monitoring (Stockage)** | - | - | +$2-5 |
 | **Total** | **~$70** | **~$9** | **~$75** |
@@ -971,7 +971,7 @@ OceaniaWatch/
 ├── .gitignore                       # Protection secrets
 │
 ├── terraform/
-│   ├── backend/                     # Backend S3 + DynamoDB
+│   ├── backend/                     # Backend S3 (native locking)
 │   │   ├── main.tf
 │   │   ├── variables.tf
 │   │   ├── outputs.tf
@@ -1073,7 +1073,7 @@ OceaniaWatch/
 ### Version 0.1.0 (2024-11-18)
 
 - ✅ Infrastructure de base (Terraform + Ansible)
-- ✅ Backend S3 + DynamoDB
+- ✅ Backend S3 avec native locking
 - ✅ Instance EC2 avec Docker
 - ✅ Script `oceania` initial
 
