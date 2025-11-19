@@ -1039,6 +1039,213 @@ cmd_status() {
 }
 
 #################################################
+# Commande DEPLOY-DNS (Route53)
+#################################################
+
+cmd_deploy_dns() {
+    print_header "🌐 DÉPLOIEMENT DNS ROUTE53"
+
+    # Vérifier que l'infrastructure est déployée
+    cd "$TERRAFORM_INFRA_DIR"
+    if ! terraform show >/dev/null 2>&1; then
+        log_error "Infrastructure non déployée"
+        log_info "Déployez d'abord l'infrastructure avec: ./oceania deploy-infra"
+        exit 1
+    fi
+
+    # Vérifier que le module DNS est activé
+    if ! grep -q "enable_dns_module.*=.*true" terraform.tfvars 2>/dev/null; then
+        log_error "Module DNS non activé dans terraform.tfvars"
+        log_info "Activez enable_dns_module = true dans terraform/infrastructure/terraform.tfvars"
+        exit 1
+    fi
+
+    log_info "Déploiement du module DNS Route53..."
+
+    # Apply uniquement le module DNS
+    if terraform apply -target=module.dns -auto-approve; then
+        log_success "Module DNS déployé"
+
+        # Exporter la config DNS pour Ansible
+        log_info "Export de la configuration DNS pour Ansible..."
+        mkdir -p "$ANSIBLE_DIR/group_vars"
+        terraform output -json dns_config_json | jq -r '.' > "$ANSIBLE_DIR/group_vars/dns_config.json"
+
+        if [[ -f "$ANSIBLE_DIR/group_vars/dns_config.json" ]]; then
+            log_success "Configuration DNS exportée: ansible/group_vars/dns_config.json"
+        fi
+
+        echo ""
+        print_header "✓ DNS ROUTE53 DÉPLOYÉ AVEC SUCCÈS"
+
+        # Afficher les nameservers
+        local nameservers=$(terraform output -json dns_nameservers 2>/dev/null | jq -r '.[]' 2>/dev/null)
+        local base_domain=$(terraform output -raw dns_base_domain 2>/dev/null || echo "N/A")
+
+        echo ""
+        printf "${CYAN}Domaine de base:${NC} ${GREEN}%s${NC}\n" "$base_domain"
+        echo ""
+        printf "${YELLOW}⚠️  IMPORTANT - Configurer les nameservers chez le registrar:${NC}\n"
+        echo ""
+        if [[ -n "$nameservers" ]]; then
+            echo "$nameservers" | while read -r ns; do
+                printf "  • %s\n" "$ns"
+            done
+        else
+            echo "  Exécutez: terraform output dns_nameservers"
+        fi
+        echo ""
+        log_info "Propagation DNS: 24-48h (parfois instantané)"
+        echo ""
+    else
+        print_header "✗ ÉCHEC DU DÉPLOIEMENT DNS"
+        log_error "Le déploiement du module DNS a échoué"
+        exit 1
+    fi
+}
+
+#################################################
+# Commande DEPLOY-TRAEFIK (Reverse Proxy HTTPS)
+#################################################
+
+cmd_deploy_traefik() {
+    print_header "🔒 DÉPLOIEMENT TRAEFIK + COREDNS"
+
+    # Vérifier que le DNS est configuré
+    if [[ ! -f "$ANSIBLE_DIR/group_vars/dns_config.json" ]]; then
+        log_error "Configuration DNS non trouvée"
+        log_info "Déployez d'abord le DNS avec: ./oceania deploy-dns"
+        exit 1
+    fi
+
+    # Vérifier que la stack monitoring est déployée
+    cd "$ANSIBLE_DIR"
+    if ! ansible all -m community.docker.docker_container_info -a "name=prometheus" >/dev/null 2>&1; then
+        log_error "Stack monitoring non déployée"
+        log_info "Déployez d'abord le monitoring avec: ./oceania deploy-monitoring"
+        exit 1
+    fi
+
+    log_info "Déploiement de Traefik et CoreDNS..."
+
+    # Déployer via playbook Ansible
+    if ansible-playbook -i inventory/dev.yml playbooks/deploy-traefik.yml; then
+        echo ""
+        print_header "✓ TRAEFIK & COREDNS DÉPLOYÉS AVEC SUCCÈS"
+
+        # Récupérer le domaine de base
+        local base_domain=$(jq -r '.base_domain' "$ANSIBLE_DIR/group_vars/dns_config.json" 2>/dev/null || echo "oceania.twca.cloud")
+
+        echo ""
+        printf "${GREEN}Services HTTPS opérationnels !${NC}\n"
+        echo ""
+        printf "🔒 ${CYAN}URLs HTTPS:${NC}\n"
+        printf "  • Grafana:       ${CYAN}https://grafana.%s${NC}\n" "$base_domain"
+        printf "  • Prometheus:    ${CYAN}https://prometheus.%s${NC}\n" "$base_domain"
+        printf "  • Alertmanager:  ${CYAN}https://alertmanager.%s${NC}\n" "$base_domain"
+        printf "  • Loki:          ${CYAN}https://loki.%s${NC}\n" "$base_domain"
+        printf "  • cAdvisor:      ${CYAN}https://cadvisor.%s${NC}\n" "$base_domain"
+        printf "  • Traefik:       ${CYAN}https://traefik.%s/dashboard/${NC}\n" "$base_domain"
+        echo ""
+        printf "🔐 ${YELLOW}Traefik Dashboard:${NC}\n"
+        printf "  Username: ${GREEN}admin${NC}\n"
+        printf "  Password: ${YELLOW}changeme${NC} ${RED}(CHANGER EN PRODUCTION !)${NC}\n"
+        echo ""
+        printf "${YELLOW}⚠️  Certificats Let's Encrypt: 1-2 minutes de génération${NC}\n"
+        echo ""
+    else
+        print_header "✗ ÉCHEC DU DÉPLOIEMENT TRAEFIK"
+        log_error "Le déploiement de Traefik a échoué"
+        exit 1
+    fi
+}
+
+#################################################
+# Commande DEPLOY-HTTPS (DNS + Traefik)
+#################################################
+
+cmd_deploy_https() {
+    print_header "🚀 DÉPLOIEMENT COMPLET DNS + HTTPS"
+
+    cmd_deploy_dns
+    echo ""
+    cmd_deploy_traefik
+}
+
+#################################################
+# Commande VALIDATE-DNS
+#################################################
+
+cmd_validate_dns() {
+    print_header "🧪 VALIDATION DNS"
+
+    if [[ ! -f "$ANSIBLE_DIR/group_vars/dns_config.json" ]]; then
+        log_error "Configuration DNS non trouvée"
+        log_info "Déployez d'abord le DNS avec: ./oceania deploy-dns"
+        exit 1
+    fi
+
+    local base_domain=$(jq -r '.base_domain' "$ANSIBLE_DIR/group_vars/dns_config.json" 2>/dev/null)
+    local instance_ip=$(jq -r '.instance_ip' "$ANSIBLE_DIR/group_vars/dns_config.json" 2>/dev/null)
+
+    echo "Test de résolution DNS pour: $base_domain"
+    echo ""
+
+    # Test du domaine de base
+    printf "Testing ${CYAN}%s${NC}... " "$base_domain"
+    if dig +short "$base_domain" | grep -q "$instance_ip"; then
+        printf "${GREEN}✓${NC}\n"
+    else
+        printf "${RED}✗${NC} (attendu: $instance_ip)\n"
+    fi
+
+    # Test des sous-domaines
+    for service in grafana prometheus alertmanager loki traefik cadvisor; do
+        printf "Testing ${CYAN}%s.%s${NC}... " "$service" "$base_domain"
+        if dig +short "$service.$base_domain" | grep -q .; then
+            printf "${GREEN}✓${NC}\n"
+        else
+            printf "${RED}✗${NC}\n"
+        fi
+    done
+
+    echo ""
+    log_info "Si les tests échouent, attendez la propagation DNS (jusqu'à 48h)"
+}
+
+#################################################
+# Commande VALIDATE-HTTPS
+#################################################
+
+cmd_validate_https() {
+    print_header "🔐 VALIDATION CERTIFICATS HTTPS"
+
+    if [[ ! -f "$ANSIBLE_DIR/group_vars/dns_config.json" ]]; then
+        log_error "Configuration DNS non trouvée"
+        exit 1
+    fi
+
+    local base_domain=$(jq -r '.base_domain' "$ANSIBLE_DIR/group_vars/dns_config.json" 2>/dev/null)
+
+    echo "Test des certificats SSL pour: $base_domain"
+    echo ""
+
+    for service in grafana prometheus alertmanager loki traefik; do
+        local url="https://$service.$base_domain"
+        printf "Testing ${CYAN}%s${NC}... " "$url"
+
+        if curl -sI --max-time 5 "$url" >/dev/null 2>&1; then
+            printf "${GREEN}✓${NC}\n"
+        else
+            printf "${RED}✗${NC}\n"
+        fi
+    done
+
+    echo ""
+    log_info "Vérifiez les logs Traefik: docker logs traefik | grep -i certificate"
+}
+
+#################################################
 # Aide et usage
 #################################################
 
@@ -1052,10 +1259,17 @@ show_help() {
     printf "    ${GREEN}deploy-all${NC}            Déployer TOUT de A à Z\n"
     printf "    ${GREEN}deploy-infra${NC}          Déployer uniquement l'infrastructure\n"
     printf "    ${GREEN}deploy-monitoring${NC}     Déployer uniquement la stack monitoring\n"
+    printf "    ${GREEN}deploy-dns${NC}            Déployer DNS Route53\n"
+    printf "    ${GREEN}deploy-traefik${NC}        Déployer Traefik reverse proxy + CoreDNS\n"
+    printf "    ${GREEN}deploy-https${NC}          Déployer DNS + Traefik (HTTPS complet)\n"
     echo ""
     printf "${YELLOW}COMMANDES DE DESTRUCTION:${NC}\n"
     printf "    ${RED}destroy${NC}               Détruire l'infrastructure EC2 uniquement\n"
     printf "    ${RED}destroy-all${NC}           Détruire TOUTE l'infrastructure\n"
+    echo ""
+    printf "${YELLOW}COMMANDES DE VALIDATION:${NC}\n"
+    printf "    ${BLUE}validate-dns${NC}          Tester la résolution DNS\n"
+    printf "    ${BLUE}validate-https${NC}        Tester les certificats HTTPS\n"
     echo ""
     printf "${YELLOW}COMMANDES DE GESTION:${NC}\n"
     printf "    ${BLUE}credentials${NC}           Afficher les credentials (URLs, logins, passwords)\n"
@@ -1089,7 +1303,7 @@ main() {
                 show_help
                 exit 0
                 ;;
-            deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|credentials|help)
+            deploy-all|deploy-infra|deploy-monitoring|deploy-dns|deploy-traefik|deploy-https|destroy|destroy-all|validate-dns|validate-https|status|credentials|help)
                 local command=$1
                 shift
                 break
@@ -1114,11 +1328,26 @@ main() {
         deploy-monitoring)
             cmd_deploy_monitoring "$@"
             ;;
+        deploy-dns)
+            cmd_deploy_dns "$@"
+            ;;
+        deploy-traefik)
+            cmd_deploy_traefik "$@"
+            ;;
+        deploy-https)
+            cmd_deploy_https "$@"
+            ;;
         destroy)
             cmd_destroy "$@"
             ;;
         destroy-all)
             cmd_destroy_all "$@"
+            ;;
+        validate-dns)
+            cmd_validate_dns "$@"
+            ;;
+        validate-https)
+            cmd_validate_https "$@"
             ;;
         status)
             cmd_status "$@"

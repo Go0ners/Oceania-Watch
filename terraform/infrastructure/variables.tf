@@ -69,3 +69,53 @@ variable "ssh_key_directory" {
   type        = string
   default     = "~/.ssh/oceania"
 }
+
+# DNS Module Variables
+variable "enable_dns_module" {
+  description = "Enable DNS module (Route53)"
+  type        = bool
+  default     = false
+}
+
+variable "dns_domain_name" {
+  description = "Main domain name for Route53 hosted zone"
+  type        = string
+  default     = "twca.cloud"
+}
+
+variable "dns_region_suffix" {
+  description = "Region suffix for subdomain (e.g., oceania)"
+  type        = string
+  default     = "oceania"
+}
+
+variable "dns_subdomains" {
+  description = "List of service subdomains to create"
+  type        = list(string)
+  default = [
+    "grafana",
+    "prometheus",
+    "alertmanager",
+    "loki",
+    "traefik",
+    "cadvisor"
+  ]
+}
+
+variable "dns_create_zone" {
+  description = "Whether to create the Route53 hosted zone"
+  type        = bool
+  default     = false
+}
+
+variable "dns_zone_id" {
+  description = "Existing Route53 hosted zone ID (required if dns_create_zone = false)"
+  type        = string
+  default     = ""
+}
+
+variable "dns_ttl" {
+  description = "TTL for DNS records in seconds"
+  type        = number
+  default     = 300
+}

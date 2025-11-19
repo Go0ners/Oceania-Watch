@@ -1,0 +1,64 @@
+---
+# CoreDNS Role Main Tasks
+
+- name: Créer le répertoire de configuration CoreDNS
+  ansible.builtin.file:
+    path: "{{ coredns_config_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - coredns
+
+- name: Générer le Corefile
+  ansible.builtin.template:
+    src: Corefile.j2
+    dest: "{{ coredns_corefile }}"
+    mode: '0644'
+  notify: Restart CoreDNS
+  tags:
+    - coredns
+
+- name: Générer le fichier Docker Compose CoreDNS
+  ansible.builtin.template:
+    src: docker-compose-coredns.yml.j2
+    dest: "{{ coredns_config_dir }}/docker-compose.yml"
+    mode: '0644'
+  tags:
+    - coredns
+
+- name: Démarrer CoreDNS via Docker Compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ coredns_config_dir }}"
+    state: present
+  tags:
+    - coredns
+
+- name: Attendre que CoreDNS soit prêt
+  ansible.builtin.wait_for:
+    port: "{{ coredns_port_udp }}"
+    host: localhost
+    timeout: 30
+    delay: 2
+  tags:
+    - coredns
+
+- name: Tester la résolution DNS CoreDNS (query locale)
+  ansible.builtin.command: "dig @localhost {{ coredns_domain }} +short"
+  register: coredns_test
+  changed_when: false
+  failed_when: false
+  tags:
+    - coredns
+
+- name: Afficher les informations CoreDNS
+  ansible.builtin.debug:
+    msg:
+      - "✅ CoreDNS déployé avec succès"
+      - "DNS Server: localhost:{{ coredns_port_udp }}"
+      - "Zone: {{ coredns_domain }}"
+      - "Upstream: {{ coredns_upstream_dns | join(', ') }}"
+      - ""
+      - "Test DNS:"
+      - "{{ coredns_test.stdout }}"
+  tags:
+    - coredns

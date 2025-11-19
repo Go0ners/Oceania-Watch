@@ -1,0 +1,94 @@
+---
+# Playbook: Déploiement Traefik + CoreDNS pour HTTPS
+# Prérequis: Stack monitoring déployée, DNS Terraform appliqué
+
+- name: Deploy Traefik Reverse Proxy with CoreDNS
+  hosts: monitoring
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Charger la configuration DNS depuis Terraform
+      ansible.builtin.include_vars:
+        file: ../group_vars/dns_config.json
+        name: dns_config
+      tags:
+        - always
+
+    - name: Vérifier que Docker est installé
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+      tags:
+        - always
+
+    - name: Vérifier que la stack monitoring est déployée
+      community.docker.docker_container_info:
+        name: prometheus
+      register: prometheus_check
+      failed_when: not prometheus_check.exists
+      tags:
+        - always
+
+    - name: Afficher la configuration DNS chargée
+      ansible.builtin.debug:
+        msg:
+          - "Configuration DNS chargée:"
+          - "Zone ID: {{ dns_config.zone_id }}"
+          - "Base domain: {{ dns_config.base_domain }}"
+          - "Instance IP: {{ dns_config.instance_ip }}"
+          - "AWS Region: {{ dns_config.aws_region }}"
+      tags:
+        - always
+
+  roles:
+    - role: coredns
+      tags:
+        - coredns
+        - dns
+
+    - role: traefik
+      tags:
+        - traefik
+        - https
+
+  post_tasks:
+    - name: Afficher les URLs d'accès HTTPS
+      ansible.builtin.debug:
+        msg:
+          - "╔═══════════════════════════════════════════════════════════╗"
+          - "║  ✅ TRAEFIK & COREDNS DEPLOYED SUCCESSFULLY               ║"
+          - "╚═══════════════════════════════════════════════════════════╝"
+          - ""
+          - "📍 Base Domain: {{ dns_config.base_domain }}"
+          - ""
+          - "🔒 HTTPS Services (Let's Encrypt):"
+          - "  • Grafana:       https://grafana.{{ dns_config.base_domain }}"
+          - "  • Prometheus:    https://prometheus.{{ dns_config.base_domain }}"
+          - "  • Alertmanager:  https://alertmanager.{{ dns_config.base_domain }}"
+          - "  • Loki:          https://loki.{{ dns_config.base_domain }}"
+          - "  • cAdvisor:      https://cadvisor.{{ dns_config.base_domain }}"
+          - "  • Traefik:       https://traefik.{{ dns_config.base_domain }}/dashboard/"
+          - ""
+          - "🔐 Traefik Dashboard Credentials:"
+          - "  Username: admin"
+          - "  Password: changeme"
+          - ""
+          - "⚠️  IMPORTANT:"
+          - "  1. Certificats Let's Encrypt génération: 1-2 minutes"
+          - "  2. DNS propagation peut prendre 5-10 minutes"
+          - "  3. Changer le mot de passe dashboard en production!"
+          - ""
+          - "🧪 Tests DNS:"
+          - "  dig @localhost {{ dns_config.base_domain }}"
+          - "  dig @localhost grafana.{{ dns_config.base_domain }}"
+          - ""
+          - "🔍 Vérifier les certificats:"
+          - "  curl -I https://grafana.{{ dns_config.base_domain }}"
+          - "  docker logs traefik | grep -i certificate"
+      tags:
+        - always

@@ -1,0 +1,122 @@
+---
+# Traefik Role Main Tasks
+
+- name: Créer le répertoire de configuration Traefik
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ traefik_config_dir }}"
+    - "{{ traefik_letsencrypt_dir }}"
+    - "{{ traefik_dynamic_dir }}"
+  tags:
+    - traefik
+
+- name: Initialiser le fichier acme.json avec les bonnes permissions
+  ansible.builtin.file:
+    path: "{{ traefik_letsencrypt_dir }}/acme.json"
+    state: touch
+    mode: '0600'
+    modification_time: preserve
+    access_time: preserve
+  tags:
+    - traefik
+
+- name: Créer le network Docker Traefik
+  community.docker.docker_network:
+    name: "{{ traefik_network_name }}"
+    driver: bridge
+    state: present
+  tags:
+    - traefik
+
+- name: Connecter les conteneurs monitoring au network Traefik (sans purge)
+  community.docker.docker_container:
+    name: "{{ item.container_name }}"
+    networks:
+      - name: "{{ monitoring_network_name }}"
+      - name: "{{ traefik_network_name }}"
+    purge_networks: false
+  loop: "{{ traefik_services }}"
+  failed_when: false
+  tags:
+    - traefik
+
+- name: Générer la configuration statique Traefik
+  ansible.builtin.template:
+    src: traefik-static.yml.j2
+    dest: "{{ traefik_static_config_file }}"
+    mode: '0644'
+  notify: Restart Traefik
+  tags:
+    - traefik
+
+- name: Générer la configuration dynamique Traefik
+  ansible.builtin.template:
+    src: traefik-dynamic.yml.j2
+    dest: "{{ traefik_dynamic_config_file }}"
+    mode: '0644'
+  notify: Restart Traefik
+  tags:
+    - traefik
+
+- name: Générer le fichier Docker Compose Traefik
+  ansible.builtin.template:
+    src: docker-compose-traefik.yml.j2
+    dest: "{{ traefik_config_dir }}/docker-compose.yml"
+    mode: '0644'
+  tags:
+    - traefik
+
+- name: Démarrer Traefik via Docker Compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ traefik_config_dir }}"
+    state: present
+  tags:
+    - traefik
+
+- name: Attendre que Traefik soit prêt
+  ansible.builtin.uri:
+    url: "http://localhost:{{ traefik_http_port }}"
+    status_code:
+      - 200
+      - 404  # Traefik répond mais pas de route définie
+    timeout: 5
+  register: traefik_ready
+  until: traefik_ready.status in [200, 404]
+  retries: "{{ traefik_health_check_retries }}"
+  delay: "{{ traefik_health_check_delay }}"
+  failed_when: false
+  tags:
+    - traefik
+
+- name: Vérifier que le dashboard Traefik est accessible
+  ansible.builtin.uri:
+    url: "http://localhost:{{ traefik_dashboard_port }}/dashboard/"
+    status_code:
+      - 200
+      - 401  # Dashboard protégé par auth
+    timeout: 5
+  register: dashboard_ready
+  until: dashboard_ready.status in [200, 401]
+  retries: 10
+  delay: 3
+  failed_when: false
+  when: traefik_dashboard_enabled
+  tags:
+    - traefik
+
+- name: Afficher les informations Traefik
+  ansible.builtin.debug:
+    msg:
+      - "✅ Traefik déployé avec succès"
+      - "Dashboard: http://{{ ansible_host }}:{{ traefik_dashboard_port }}/dashboard/ ({{ traefik_dashboard_auth_user }}/changeme)"
+      - "Dashboard HTTPS: https://{{ traefik_dashboard_subdomain }}.{{ traefik_base_domain }}/dashboard/"
+      - ""
+      - "Services exposés via HTTPS:"
+      - "{% for service in traefik_services %}- {{ service.subdomain }}.{{ traefik_base_domain }}\n{% endfor %}"
+      - ""
+      - "⚠️  Certificats Let's Encrypt peuvent prendre 1-2 minutes à être générés"
+  tags:
+    - traefik

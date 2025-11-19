@@ -1,0 +1,31 @@
+# DNS Module Configuration
+# Copy this file to terraform.tfvars and fill with your values
+
+# Zone Route53 existante (recommandé)
+create_zone = false
+zone_id     = "Z0123456789ABCDEFGHIJ"  # Remplacer par l'ID de votre zone twca.cloud
+
+# OU créer une nouvelle zone
+# create_zone = true
+
+# Configuration DNS
+domain_name        = "twca.cloud"
+region_suffix      = "oceania"
+instance_public_ip = "54.123.45.67"  # Remplacer par l'IP publique EC2
+
+# Services à exposer via DNS
+subdomains = [
+  "grafana",
+  "prometheus",
+  "alertmanager",
+  "loki",
+  "traefik",
+  "cadvisor"
+]
+
+# Métadonnées
+project_name = "oceania-watch"
+environment  = "Dev"
+
+# TTL DNS (secondes)
+ttl = 300

@@ -8,6 +8,7 @@ resource "aws_instance" "main" {
   associate_public_ip_address = var.enable_public_ip
   monitoring                  = var.enable_detailed_monitoring
   disable_api_termination     = var.enable_termination_protection
+  iam_instance_profile        = aws_iam_instance_profile.ec2.name
 
   # Force IMDSv2 (protection SSRF)
   metadata_options {

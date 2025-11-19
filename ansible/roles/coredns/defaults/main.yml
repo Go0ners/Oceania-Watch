@@ -1,0 +1,49 @@
+---
+# CoreDNS Role Default Variables
+
+# Versions
+coredns_version: "latest"
+
+# Network Docker
+coredns_network_name: "traefik-network"
+
+# Ports
+coredns_port_udp: 53
+coredns_port_tcp: 53
+
+# Configuration DNS
+coredns_domain: "{{ dns_config.base_domain | default('oceania.twca.cloud') }}"
+coredns_zone_name: "{{ dns_config.zone_name | default('twca.cloud') }}"
+
+# IP Traefik (IP locale de la machine EC2)
+coredns_traefik_ip: "{{ ansible_default_ipv4.address }}"
+
+# DNS Upstream (fallback)
+coredns_upstream_dns:
+  - "1.1.1.1:53"   # Cloudflare
+  - "8.8.8.8:53"   # Google DNS
+
+# Services mapping (pour résolution locale .local)
+coredns_local_services:
+  - name: "grafana"
+    ip: "{{ coredns_traefik_ip }}"
+  - name: "prometheus"
+    ip: "{{ coredns_traefik_ip }}"
+  - name: "alertmanager"
+    ip: "{{ coredns_traefik_ip }}"
+  - name: "loki"
+    ip: "{{ coredns_traefik_ip }}"
+  - name: "traefik"
+    ip: "{{ coredns_traefik_ip }}"
+  - name: "cadvisor"
+    ip: "{{ coredns_traefik_ip }}"
+
+# Répertoires
+coredns_config_dir: "/opt/coredns"
+coredns_corefile: "{{ coredns_config_dir }}/Corefile"
+
+# Log level (DEBUG, INFO, WARNING, ERROR)
+coredns_log_level: "INFO"
+
+# Cache TTL
+coredns_cache_ttl: 30

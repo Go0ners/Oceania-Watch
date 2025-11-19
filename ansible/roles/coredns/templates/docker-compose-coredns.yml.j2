@@ -1,0 +1,22 @@
+networks:
+  traefik:
+    name: {{ coredns_network_name }}
+    external: true
+
+services:
+  coredns:
+    image: "coredns/coredns:{{ coredns_version }}"
+    container_name: "coredns"
+    restart: unless-stopped
+
+    networks:
+      - traefik
+
+    ports:
+      - "{{ coredns_port_udp }}:53/udp"
+      - "{{ coredns_port_tcp }}:53/tcp"
+
+    volumes:
+      - {{ coredns_corefile }}:/etc/coredns/Corefile:ro
+
+    command: -conf /etc/coredns/Corefile

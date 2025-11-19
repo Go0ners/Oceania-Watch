@@ -1,0 +1,9 @@
+---
+# CoreDNS Role Handlers
+
+- name: Restart CoreDNS
+  community.docker.docker_compose_v2:
+    project_src: "{{ coredns_config_dir }}"
+    state: restarted
+  tags:
+    - coredns

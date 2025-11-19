@@ -16,6 +16,7 @@
 - [Description](#-description)
 - [Architecture](#️-architecture)
 - [Stack Monitoring](#-stack-monitoring)
+- [DNS & HTTPS](#-dns--https) **⭐ NOUVEAU**
 - [Prérequis](#️-prérequis)
 - [Installation et Déploiement](#-installation-et-déploiement)
 - [Commandes Disponibles](#-commandes-disponibles)
@@ -278,6 +279,157 @@ Le projet combine :
 | HighCPUUsage | CPU > 80% | 10 min | Warning |
 | HighMemoryUsage | RAM > 85% | 10 min | Warning |
 | DiskSpaceLow | Disque < 15% | 5 min | Warning |
+
+---
+
+## 🌐 DNS & HTTPS
+
+### Vue d'ensemble
+
+OceaniaWatch intègre une gestion DNS complète via **Route 53** et un reverse proxy **Traefik** pour exposer tous les services via HTTPS avec certificats Let's Encrypt.
+
+### Architecture DNS & HTTPS
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Internet                                                     │
+└────────┬─────────────────────────────────────────────────────┘
+         │ HTTPS (443)
+         ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Route 53 (DNS)                                              │
+│  twca.cloud                                                  │
+│  └─ oceania.twca.cloud (A → IP EC2)                          │
+│     ├─ grafana.oceania.twca.cloud (CNAME)                    │
+│     ├─ prometheus.oceania.twca.cloud (CNAME)                 │
+│     ├─ alertmanager.oceania.twca.cloud (CNAME)               │
+│     ├─ loki.oceania.twca.cloud (CNAME)                       │
+│     ├─ traefik.oceania.twca.cloud (CNAME)                    │
+│     └─ *.oceania.twca.cloud (Wildcard CNAME)                 │
+└────────┬─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────────┐
+│  EC2 Instance (us-east-1)                                    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  Traefik (Reverse Proxy)                               │  │
+│  │  - Let's Encrypt (DNS Challenge Route53)               │  │
+│  │  - Wildcard *.oceania.twca.cloud                        │  │
+│  │  - Auto-discovery Docker                               │  │
+│  └───────┬────────────────────────────────────────────────┘  │
+│          │ traefik-network                                   │
+│          ▼                                                   │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  Services Monitoring (Docker)                          │  │
+│  │  ├─ Grafana :3000                                      │  │
+│  │  ├─ Prometheus :9090                                   │  │
+│  │  ├─ Alertmanager :9093                                 │  │
+│  │  ├─ Loki :3100                                         │  │
+│  │  └─ cAdvisor :8080                                     │  │
+│  └────────────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  CoreDNS :53                                           │  │
+│  │  - Résolution locale *.oceania.twca.cloud              │  │
+│  │  - Résolution *.local (conteneurs)                     │  │
+│  │  - Fallback: 1.1.1.1, 8.8.8.8                          │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### URLs d'accès HTTPS
+
+Avec DNS & HTTPS activés, tous les services sont accessibles via domaines sécurisés :
+
+| Service | URL HTTPS |
+|---------|-----------|
+| **Grafana** | `https://grafana.oceania.twca.cloud` |
+| **Prometheus** | `https://prometheus.oceania.twca.cloud` |
+| **Alertmanager** | `https://alertmanager.oceania.twca.cloud` |
+| **Loki** | `https://loki.oceania.twca.cloud` |
+| **cAdvisor** | `https://cadvisor.oceania.twca.cloud` |
+| **Traefik Dashboard** | `https://traefik.oceania.twca.cloud/dashboard/` |
+
+### Composants
+
+#### 1. **Module Terraform DNS** (`terraform/dns/`)
+
+Gère la configuration DNS Route 53 :
+- Création/utilisation zone hébergée `twca.cloud`
+- Enregistrement A pour `oceania.twca.cloud` → IP EC2
+- Enregistrements CNAME pour chaque service
+- Wildcard CNAME `*.oceania.twca.cloud`
+- Export config JSON pour Ansible
+
+#### 2. **Rôle Ansible Traefik** (`ansible/roles/traefik/`)
+
+Reverse proxy HTTPS :
+- Traefik v3.6.2 (Docker Compose)
+- Let's Encrypt avec DNS Challenge Route53
+- Wildcard certificate `*.oceania.twca.cloud`
+- Découverte automatique services Docker
+- Dashboard sécurisé (BasicAuth)
+- Redirections HTTP → HTTPS automatiques
+- Security headers (HSTS, XSS, etc.)
+
+#### 3. **Rôle Ansible CoreDNS** (`ansible/roles/coredns/`)
+
+Serveur DNS local :
+- Résolution `*.oceania.twca.cloud` vers IP locale
+- Résolution `*.local` pour conteneurs
+- Cache DNS (30s TTL)
+- Fallback vers DNS publics
+
+### Déploiement rapide DNS & HTTPS
+
+```bash
+# Activer le module DNS dans terraform.tfvars
+sed -i 's/enable_dns_module = false/enable_dns_module = true/' terraform/infrastructure/terraform.tfvars
+
+# Configurer la zone Route53 (si zone existe déjà)
+# Éditer terraform/infrastructure/terraform.tfvars :
+dns_create_zone = false
+dns_zone_id     = "Z0123456789ABCDEFGHIJ"  # ID de votre zone twca.cloud
+
+# Déployer DNS + HTTPS complet
+./oceania deploy-https
+```
+
+### Configuration DNS chez le registrar
+
+Après le premier déploiement DNS :
+
+1. Récupérer les nameservers Route53 :
+```bash
+cd terraform/infrastructure
+terraform output dns_nameservers
+```
+
+2. Configurer les 4 nameservers chez votre registrar (ex: Namecheap, GoDaddy)
+
+3. Attendre propagation DNS (jusqu'à 48h, souvent instantané)
+
+### Tests DNS & HTTPS
+
+```bash
+# Tester résolution DNS
+./oceania validate-dns
+
+# Tester certificats HTTPS
+./oceania validate-https
+
+# Tests manuels
+dig oceania.twca.cloud
+dig grafana.oceania.twca.cloud
+curl -I https://grafana.oceania.twca.cloud
+```
+
+### Sécurité HTTPS
+
+- **Certificats** : Let's Encrypt (wildcard `*.oceania.twca.cloud`)
+- **Renouvellement** : Automatique par Traefik
+- **Challenge** : DNS via Route53 (pas d'exposition HTTP:80 requise)
+- **Storage** : `/opt/traefik/letsencrypt/acme.json` (permissions 600)
+- **IAM** : Instance EC2 avec permissions Route53 (DNS challenge)
 
 ---
 

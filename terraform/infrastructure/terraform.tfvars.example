@@ -24,3 +24,21 @@ enable_termination_protection = false
 
 # Répertoire des clés SSH
 ssh_key_directory = "~/.ssh/oceania"
+
+# DNS & HTTPS (Route53 + Traefik)
+enable_dns_module = false  # Mettre à true pour activer DNS/HTTPS
+dns_domain_name   = "twca.cloud"
+dns_region_suffix = "oceania"
+dns_create_zone   = false  # true pour créer la zone, false pour utiliser zone existante
+dns_zone_id       = ""     # Requis si dns_create_zone = false (ex: "Z0123456789ABCDEFGHIJ")
+dns_ttl           = 300
+
+# Services à exposer via DNS (ajouter/retirer selon besoins)
+dns_subdomains = [
+  "grafana",
+  "prometheus",
+  "alertmanager",
+  "loki",
+  "traefik",
+  "cadvisor"
+]

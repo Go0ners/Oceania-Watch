@@ -79,3 +79,70 @@ output "project_name" {
   description = "Project name"
   value       = var.project_name
 }
+
+# DNS Module Outputs (conditionnels)
+output "dns_zone_id" {
+  description = "Route53 hosted zone ID"
+  value       = var.enable_dns_module ? module.dns[0].zone_id : null
+}
+
+output "dns_zone_name" {
+  description = "Route53 hosted zone name"
+  value       = var.enable_dns_module ? module.dns[0].zone_name : null
+}
+
+output "dns_nameservers" {
+  description = "Route53 nameservers (to configure at registrar)"
+  value       = var.enable_dns_module ? module.dns[0].nameservers : []
+}
+
+output "dns_base_domain" {
+  description = "Base domain for services (e.g., oceania.twca.cloud)"
+  value       = var.enable_dns_module ? module.dns[0].base_domain : null
+}
+
+output "dns_service_fqdns" {
+  description = "Map of service FQDNs"
+  value       = var.enable_dns_module ? module.dns[0].service_fqdns : {}
+}
+
+output "dns_all_fqdns" {
+  description = "List of all FQDNs created"
+  value       = var.enable_dns_module ? module.dns[0].all_fqdns : []
+}
+
+output "dns_config_json" {
+  description = "DNS configuration as JSON string (for Ansible export)"
+  value       = var.enable_dns_module ? module.dns[0].dns_config : null
+}
+
+# Service URLs (HTTPS si DNS activé, HTTP sinon)
+output "prometheus_url" {
+  description = "Prometheus access URL"
+  value       = var.enable_dns_module ? "https://prometheus.${module.dns[0].base_domain}" : "http://${aws_eip.main.public_ip}:9090"
+}
+
+output "grafana_url" {
+  description = "Grafana access URL"
+  value       = var.enable_dns_module ? "https://grafana.${module.dns[0].base_domain}" : "http://${aws_eip.main.public_ip}:3000"
+}
+
+output "alertmanager_url" {
+  description = "Alertmanager access URL"
+  value       = var.enable_dns_module ? "https://alertmanager.${module.dns[0].base_domain}" : "http://${aws_eip.main.public_ip}:9093"
+}
+
+output "loki_url" {
+  description = "Loki access URL"
+  value       = var.enable_dns_module ? "https://loki.${module.dns[0].base_domain}" : "http://${aws_eip.main.public_ip}:3100"
+}
+
+output "traefik_dashboard_url" {
+  description = "Traefik dashboard URL"
+  value       = var.enable_dns_module ? "https://traefik.${module.dns[0].base_domain}" : "http://${aws_eip.main.public_ip}:8080"
+}
+
+output "cadvisor_url" {
+  description = "cAdvisor access URL"
+  value       = var.enable_dns_module ? "https://cadvisor.${module.dns[0].base_domain}" : "http://${aws_eip.main.public_ip}:8080"
+}

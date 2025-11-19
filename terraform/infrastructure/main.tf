@@ -43,3 +43,26 @@ provider "aws" {
     }
   }
 }
+
+# DNS Module (Route53)
+module "dns" {
+  count  = var.enable_dns_module ? 1 : 0
+  source = "../dns"
+
+  # Configuration DNS
+  domain_name        = var.dns_domain_name
+  region_suffix      = var.dns_region_suffix
+  subdomains         = var.dns_subdomains
+  instance_public_ip = aws_eip.main.public_ip
+  ttl                = var.dns_ttl
+
+  # Zone Route53
+  create_zone = var.dns_create_zone
+  zone_id     = var.dns_zone_id
+
+  # Métadonnées
+  project_name = var.project_name
+  environment  = var.environment
+
+  depends_on = [aws_eip.main]
+}

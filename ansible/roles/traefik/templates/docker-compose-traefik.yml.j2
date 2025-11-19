@@ -1,0 +1,62 @@
+networks:
+  traefik:
+    name: {{ traefik_network_name }}
+    external: true
+  monitoring:
+    name: {{ monitoring_network_name }}
+    external: true
+
+services:
+  traefik:
+    image: "traefik:{{ traefik_version }}"
+    container_name: "traefik"
+    restart: unless-stopped
+
+    networks:
+      - traefik
+      - monitoring
+
+    ports:
+      - "{{ traefik_http_port }}:80"
+      - "{{ traefik_https_port }}:443"
+{% if traefik_dashboard_enabled %}
+      - "{{ traefik_dashboard_port }}:8080"
+{% endif %}
+
+    environment:
+      - AWS_REGION={{ traefik_aws_region }}
+      - AWS_HOSTED_ZONE_ID={{ traefik_aws_hosted_zone_id }}
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - {{ traefik_static_config_file }}:/etc/traefik/traefik.yml:ro
+      - {{ traefik_dynamic_dir }}:/etc/traefik/dynamic:ro
+      - {{ traefik_letsencrypt_dir }}:/letsencrypt
+
+{% if traefik_dashboard_enabled %}
+    labels:
+      - "traefik.enable=true"
+
+      # Dashboard HTTP
+      - "traefik.http.routers.dashboard-http.rule=Host(`{{ traefik_dashboard_subdomain }}.{{ traefik_base_domain }}`)"
+      - "traefik.http.routers.dashboard-http.entrypoints=web"
+      - "traefik.http.routers.dashboard-http.service=api@internal"
+      - "traefik.http.routers.dashboard-http.middlewares=dashboard-redirect-https"
+
+      # Dashboard HTTPS
+      - "traefik.http.routers.dashboard.rule=Host(`{{ traefik_dashboard_subdomain }}.{{ traefik_base_domain }}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers"
+
+      # Middleware Basic Auth
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users={{ traefik_dashboard_auth_password_hash }}"
+
+      # Middleware HTTPS redirect
+      - "traefik.http.middlewares.dashboard-redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.dashboard-redirect-https.redirectscheme.permanent=true"
+{% endif %}
+
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"

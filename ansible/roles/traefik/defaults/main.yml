@@ -1,0 +1,71 @@
+---
+# Traefik Role Default Variables
+
+# Versions
+traefik_version: "v3.6.2"
+
+# Networks Docker
+traefik_network_name: "traefik-network"
+monitoring_network_name: "monitoring-network"
+
+# Ports
+traefik_http_port: 80
+traefik_https_port: 443
+traefik_dashboard_port: 8080
+
+# Domaine (récupéré depuis Terraform DNS output)
+traefik_domain: "{{ dns_config.zone_name | default('twca.cloud') }}"
+traefik_region_suffix: "{{ dns_config.base_domain | default('oceania') }}"
+traefik_base_domain: "{{ dns_config.base_domain | default('oceania.twca.cloud') }}"
+
+# ACME Let's Encrypt
+traefik_acme_email: "dns.oceania@gnrs.ca"
+traefik_acme_storage: "/letsencrypt/acme.json"
+traefik_acme_challenge: "dns-route53"
+traefik_aws_region: "{{ dns_config.aws_region | default('us-east-1') }}"
+traefik_aws_hosted_zone_id: "{{ dns_config.zone_id | default('') }}"
+traefik_use_staging_ca: false  # true pour tester avec staging CA
+
+# Dashboard Traefik
+traefik_dashboard_enabled: true
+traefik_dashboard_subdomain: "traefik"
+traefik_dashboard_auth_user: "admin"
+# Générer hash : htpasswd -nb admin changeme | sed -e s/\\$/\\$\\$/g
+traefik_dashboard_auth_password_hash: "admin:$$apr1$$8EVjn/nj$$GiLUZqcbuBWMVMLJc.mRL"  # changeme
+
+# Services mapping (services monitoring à exposer)
+traefik_services:
+  - name: "grafana"
+    subdomain: "grafana"
+    container_name: "grafana"
+    port: 3000
+  - name: "prometheus"
+    subdomain: "prometheus"
+    container_name: "prometheus"
+    port: 9090
+  - name: "alertmanager"
+    subdomain: "alertmanager"
+    container_name: "alertmanager"
+    port: 9093
+  - name: "loki"
+    subdomain: "loki"
+    container_name: "loki"
+    port: 3100
+  - name: "cadvisor"
+    subdomain: "cadvisor"
+    container_name: "cadvisor"
+    port: 8080
+
+# Répertoires
+traefik_config_dir: "/opt/traefik"
+traefik_letsencrypt_dir: "{{ traefik_config_dir }}/letsencrypt"
+traefik_dynamic_dir: "{{ traefik_config_dir }}/dynamic"
+traefik_static_config_file: "{{ traefik_config_dir }}/traefik.yml"
+traefik_dynamic_config_file: "{{ traefik_dynamic_dir }}/dynamic.yml"
+
+# Log level (DEBUG, INFO, WARN, ERROR)
+traefik_log_level: "INFO"
+
+# Health check
+traefik_health_check_retries: 30
+traefik_health_check_delay: 5
