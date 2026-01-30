@@ -329,19 +329,10 @@ aws sts get-caller-identity
 ### Quickstart (5 minutes)
 
 ```bash
-# 1. Configurer les variables
-cd terraform/backend
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars  # Éditer project_name, environment
+# 1. Configuration interactive (détecte votre IP, configure les variables)
+./oceania quickstart
 
-cd ../infrastructure
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars  # IMPORTANT: allowed_ssh_ips = ["VOTRE_IP/32"]
-
-# 2. Retour à la racine
-cd ../..
-
-# 3. Déployer TOUT
+# 2. Déployer TOUT
 ./oceania deploy-all
 
 # Durée: 10-15 minutes
@@ -359,6 +350,17 @@ cd ../..
 ---
 
 ## 🎮 Commandes Disponibles
+
+### Préparation
+
+```bash
+# Configuration interactive de l'environnement
+./oceania quickstart
+# ├─ Vérifie les prérequis (terraform, ansible, aws-cli)
+# ├─ Détecte votre IP publique
+# ├─ Configure les variables (projet, région, instance)
+# └─ Génère les fichiers terraform.tfvars
+```
 
 ### Déploiement
 
@@ -393,6 +395,9 @@ cd ../..
 # Voir l'état complet
 ./oceania status
 
+# Nettoyer les fichiers locaux (avant push git)
+./oceania clean
+
 # Détruire infrastructure (garder backend)
 ./oceania destroy
 
@@ -401,6 +406,18 @@ cd ../..
 
 # Aide
 ./oceania help
+```
+
+### Options
+
+```bash
+# Mode verbeux (affiche les détails Terraform)
+./oceania -v deploy-all
+./oceania --verbose deploy-all
+
+# Mode silencieux (pas d'interactions)
+./oceania -q deploy-all
+./oceania --quiet deploy-all
 ```
 
 ### Résultat du Déploiement
