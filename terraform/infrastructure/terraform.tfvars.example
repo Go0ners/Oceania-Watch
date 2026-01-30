@@ -7,7 +7,7 @@ aws_region = "us-east-1"
 project_name = "oceania-watch"
 
 # Environnement
-environment = "dev"
+environment = "Dev"
 
 # IPs autorisées pour SSH (remplacer par votre IP publique)
 allowed_ssh_ips = ["1.2.3.4/32"]  # Votre IP publique

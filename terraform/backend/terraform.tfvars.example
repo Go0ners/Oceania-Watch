@@ -4,10 +4,10 @@
 project_name = "oceania-watch"
 
 # Environnement
-environment = "dev"
+environment = "Dev"
 
 # Région AWS
-aws_region = "eu-west-1"
+aws_region = "us-east-1"
 
 # Activer le versioning S3
 enable_versioning = true

@@ -28,6 +28,7 @@ readonly CREDENTIALS_FILE="${SCRIPT_DIR}/.oceania-credentials"
 
 # Variables globales
 QUIET_MODE=false
+VERBOSE_MODE=false
 
 #################################################
 # Fonctions utilitaires
@@ -81,6 +82,55 @@ spinner() {
     return $exit_code
 }
 
+run_with_spinner() {
+    local message=$1
+    shift
+    local cmd=("$@")
+    local output_file=$(mktemp)
+    
+    "${cmd[@]}" > "$output_file" 2>&1 &
+    local pid=$!
+    spinner $pid "$message"
+    local exit_code=$?
+    
+    if [[ $exit_code -ne 0 ]]; then
+        echo ""
+        log_error "Commande échouée: ${cmd[*]}"
+        cat "$output_file"
+    fi
+    rm -f "$output_file"
+    return $exit_code
+}
+
+run_terraform() {
+    local action=$1
+    shift
+    
+    if [[ "$VERBOSE_MODE" == true ]]; then
+        terraform "$action" "$@"
+    else
+        local output_file=$(mktemp)
+        terraform "$action" "$@" > "$output_file" 2>&1
+        local exit_code=$?
+        
+        if [[ $exit_code -ne 0 ]]; then
+            cat "$output_file"
+        else
+            # Afficher un résumé
+            local added=$(grep -oE 'added|created' "$output_file" | wc -l | tr -d ' ')
+            local changed=$(grep -oE 'changed|modified' "$output_file" | wc -l | tr -d ' ')
+            local destroyed=$(grep -oE 'destroyed' "$output_file" | wc -l | tr -d ' ')
+            if [[ "$action" == "apply" ]]; then
+                log_success "Terraform apply: ${added} ajouté(s), ${changed} modifié(s)"
+            elif [[ "$action" == "destroy" ]]; then
+                log_success "Terraform destroy: ${destroyed} détruit(s)"
+            fi
+        fi
+        rm -f "$output_file"
+        return $exit_code
+    fi
+}
+
 confirm() {
     local message=$1
     local default=${2:-n}
@@ -101,13 +151,13 @@ confirm() {
 
 confirm_destructive() {
     local message=$1
-    local confirmation_word=$2
 
     printf "${RED}⚠${NC}  %s\n" "$message"
-    printf "Tapez '${YELLOW}%s${NC}' pour confirmer: " "$confirmation_word"
+    printf "${RED}⚠${NC}  Êtes-vous sûr ? [y/${YELLOW}N${NC}]: "
     read -r response
 
-    [[ "$response" == "$confirmation_word" ]]
+    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+    [[ "$response" =~ ^(y|yes)$ ]]
 }
 
 check_prerequisites() {
@@ -263,14 +313,16 @@ deploy_backend() {
     fi
 
     log_info "Initialisation Terraform backend..."
-    terraform init -input=false >/dev/null 2>&1 &
-    spinner $! "Initialisation en cours..."
+    if ! run_with_spinner "Initialisation en cours..." terraform init -input=false; then
+        log_error "Échec de l'initialisation Terraform"
+        return 1
+    fi
 
     log_info "Validation de la configuration..."
     terraform validate >/dev/null 2>&1
 
     log_info "Application de l'infrastructure backend..."
-    terraform apply -auto-approve
+    run_terraform apply -auto-approve
 
     if [[ $? -eq 0 ]]; then
         save_state "backend" "deployed"
@@ -323,7 +375,7 @@ deploy_infrastructure() {
 
     if [[ -n "$BUCKET_NAME" ]]; then
         # Récupérer la région depuis le backend
-        local BACKEND_REGION=$(cd "$TERRAFORM_BACKEND_DIR" && terraform output -raw aws_region 2>/dev/null || echo "eu-west-1")
+        local BACKEND_REGION=$(cd "$TERRAFORM_BACKEND_DIR" && terraform output -raw aws_region 2>/dev/null || echo "us-east-1")
         log_info "Configuration backend avec bucket: $BUCKET_NAME"
         cat > backend.hcl <<EOF
 bucket       = "$BUCKET_NAME"
@@ -340,21 +392,14 @@ EOF
     fi
 
     log_info "Initialisation Terraform infrastructure..."
-    # Utiliser -reconfigure si .terraform n'existe pas (après un destroy)
     if [[ ! -d ".terraform" ]]; then
-        terraform init -input=false -backend-config=backend.hcl -reconfigure >/dev/null 2>&1 &
-        spinner $! "Initialisation en cours..."
-        if [[ $? -ne 0 ]]; then
+        if ! run_with_spinner "Initialisation en cours..." terraform init -input=false -backend-config=backend.hcl -reconfigure; then
             log_error "Échec de l'initialisation Terraform"
-            terraform init -input=false -backend-config=backend.hcl -reconfigure
             return 1
         fi
     else
-        terraform init -input=false -backend-config=backend.hcl >/dev/null 2>&1 &
-        spinner $! "Initialisation en cours..."
-        if [[ $? -ne 0 ]]; then
+        if ! run_with_spinner "Initialisation en cours..." terraform init -input=false -backend-config=backend.hcl; then
             log_error "Échec de l'initialisation Terraform"
-            terraform init -input=false -backend-config=backend.hcl
             return 1
         fi
     fi
@@ -363,7 +408,7 @@ EOF
     terraform validate >/dev/null 2>&1
 
     log_info "Application de l'infrastructure EC2..."
-    terraform apply -auto-approve
+    run_terraform apply -auto-approve
 
     if [[ $? -eq 0 ]]; then
         save_state "infrastructure" "deployed"
@@ -375,18 +420,12 @@ EOF
             log_info "Attente du démarrage de l'instance ${instance_id}..."
 
             # Attendre que l'instance soit 'running'
-            aws ec2 wait instance-running --instance-ids "$instance_id" --no-cli-pager 2>/dev/null &
-            spinner $! "Instance en cours de démarrage..."
-
-            if [[ $? -eq 0 ]]; then
+            if run_with_spinner "Instance en cours de démarrage..." aws ec2 wait instance-running --instance-ids "$instance_id" --no-cli-pager; then
                 log_success "Instance en cours d'exécution"
 
-                # Attendre que les status checks passent (optionnel mais recommandé)
+                # Attendre que les status checks passent
                 log_info "Attente des vérifications système..."
-                aws ec2 wait instance-status-ok --instance-ids "$instance_id" --no-cli-pager 2>/dev/null &
-                spinner $! "Vérifications système en cours..."
-
-                if [[ $? -eq 0 ]]; then
+                if run_with_spinner "Vérifications système en cours..." aws ec2 wait instance-status-ok --instance-ids "$instance_id" --no-cli-pager; then
                     log_success "Instance prête et accessible"
                 else
                     log_warning "Vérifications système en attente (peut prendre quelques minutes)"
@@ -410,8 +449,7 @@ configure_instance() {
 
     log_info "Installation des collections Ansible..."
     if [[ -f "requirements.yml" ]]; then
-        ansible-galaxy collection install -r requirements.yml >/dev/null 2>&1 &
-        spinner $! "Installation des collections..."
+        run_with_spinner "Installation des collections..." ansible-galaxy collection install -r requirements.yml
     fi
 
     log_info "Mise à jour de l'inventaire depuis Terraform..."
@@ -492,18 +530,27 @@ deploy_monitoring() {
 }
 
 #################################################
-# Commande DEPLOY-INFRA (Backend + Infrastructure)
+# Fonction de déploiement commune
 #################################################
 
-cmd_deploy_infra() {
-    print_header "🚀 DÉPLOIEMENT INFRASTRUCTURE"
+do_deploy() {
+    local include_monitoring=${1:-false}
+    local backup_name="pre-deploy"
+    local header_title="🚀 DÉPLOIEMENT INFRASTRUCTURE"
+    
+    if [[ "$include_monitoring" == true ]]; then
+        backup_name="pre-deploy-all"
+        header_title="🚀 DÉPLOIEMENT COMPLET OCEANIA-WATCH"
+    fi
+
+    print_header "$header_title"
 
     # Vérifications préalables
     check_prerequisites || exit 1
     check_aws_credentials || exit 1
 
     # Créer une sauvegarde avant déploiement
-    local backup_path=$(create_backup "pre-deploy-infra")
+    local backup_path=$(create_backup "$backup_name")
 
     # Déterminer à quelle étape reprendre
     local last_state=$(get_last_state)
@@ -512,36 +559,66 @@ cmd_deploy_infra() {
     # Déploiement séquentiel
     local failed=false
 
-    if [[ "$last_state" == "none" || "$last_state" == "destroyed" ]]; then
+    # Étape 1: Backend
+    if [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "" ]]; then
         deploy_backend || failed=true
     fi
 
-    if [[ "$failed" == false ]] && [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "backend" ]]; then
-        deploy_infrastructure || failed=true
+    # Étape 2: Infrastructure
+    if [[ "$failed" == false ]]; then
+        if [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "backend" || "$last_state" == "" ]]; then
+            deploy_infrastructure || failed=true
+        fi
     fi
 
+    # Étape 3: Configuration
     if [[ "$failed" == false ]]; then
-        configure_instance || failed=true
+        if [[ "$last_state" != "monitoring" ]]; then
+            configure_instance || failed=true
+        fi
+    fi
+
+    # Étape 4: Monitoring (si demandé)
+    if [[ "$failed" == false && "$include_monitoring" == true ]]; then
+        deploy_monitoring || failed=true
     fi
 
     # Résumé final
     echo ""
     if [[ "$failed" == false ]]; then
-        print_header "✓ INFRASTRUCTURE DÉPLOYÉE AVEC SUCCÈS"
-
         # Récupérer l'IP de connexion
         cd "$TERRAFORM_INFRA_DIR"
         local instance_ip=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
         local ssh_key=$(terraform output -raw private_key_path 2>/dev/null || echo "N/A")
 
-        printf "${GREEN}Infrastructure déployée et configurée !${NC}\n"
+        if [[ "$include_monitoring" == true ]]; then
+            print_header "✓ DÉPLOIEMENT COMPLET TERMINÉ AVEC SUCCÈS"
+            printf "${GREEN}Infrastructure complète déployée et configurée !${NC}\n"
+        else
+            print_header "✓ INFRASTRUCTURE DÉPLOYÉE AVEC SUCCÈS"
+            printf "${GREEN}Infrastructure déployée et configurée !${NC}\n"
+        fi
+
         echo ""
         echo "Connexion SSH:"
         printf "  ${CYAN}ssh -i %s ec2-user@%s${NC}\n" "$ssh_key" "$instance_ip"
         echo ""
-        echo "Prochaines étapes:"
-        echo "  ./oceania deploy-monitoring  - Déployer la stack monitoring"
-        echo "  ./oceania status             - Voir l'état"
+
+        if [[ "$include_monitoring" == true ]]; then
+            echo "Services de monitoring:"
+            printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
+            echo ""
+            echo "Pour gérer l'instance:"
+            echo "  ./oceania credentials - Afficher les logins/passwords"
+            echo "  ./oceania status      - Voir l'état"
+            echo "  ./oceania destroy     - Détruire l'infrastructure"
+        else
+            echo "Prochaines étapes:"
+            echo "  ./oceania deploy-monitoring  - Déployer la stack monitoring"
+            echo "  ./oceania status             - Voir l'état"
+        fi
         echo ""
     else
         print_header "✗ ÉCHEC DU DÉPLOIEMENT"
@@ -550,6 +627,14 @@ cmd_deploy_infra() {
         log_info "Consultez les logs ci-dessus pour plus de détails"
         exit 1
     fi
+}
+
+#################################################
+# Commande DEPLOY-INFRA (Backend + Infrastructure)
+#################################################
+
+cmd_deploy_infra() {
+    do_deploy false
 }
 
 #################################################
@@ -607,78 +692,7 @@ cmd_deploy_monitoring() {
 #################################################
 
 cmd_deploy_all() {
-    print_header "🚀 DÉPLOIEMENT COMPLET OCEANIA-WATCH"
-
-    # Vérifications préalables
-    check_prerequisites || exit 1
-    check_aws_credentials || exit 1
-
-    # Créer une sauvegarde avant déploiement
-    local backup_path=$(create_backup "pre-deploy-all")
-
-    # Déterminer à quelle étape reprendre
-    local last_state=$(get_last_state)
-    log_info "État actuel: ${last_state}"
-
-    # Déploiement séquentiel
-    local failed=false
-
-    # Étape 1: Backend
-    if [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "" ]]; then
-        deploy_backend || failed=true
-    fi
-
-    # Étape 2: Infrastructure
-    if [[ "$failed" == false ]]; then
-        if [[ "$last_state" == "none" || "$last_state" == "destroyed" || "$last_state" == "backend" || "$last_state" == "" ]]; then
-            deploy_infrastructure || failed=true
-        fi
-    fi
-
-    # Étape 3: Configuration
-    if [[ "$failed" == false ]]; then
-        if [[ "$last_state" != "monitoring" ]]; then
-            configure_instance || failed=true
-        fi
-    fi
-
-    # Étape 4: Monitoring
-    if [[ "$failed" == false ]]; then
-        deploy_monitoring || failed=true
-    fi
-
-    # Résumé final
-    echo ""
-    if [[ "$failed" == false ]]; then
-        print_header "✓ DÉPLOIEMENT COMPLET TERMINÉ AVEC SUCCÈS"
-
-        # Récupérer l'IP de connexion
-        cd "$TERRAFORM_INFRA_DIR"
-        local instance_ip=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
-        local ssh_key=$(terraform output -raw private_key_path 2>/dev/null || echo "N/A")
-
-        printf "${GREEN}Infrastructure complète déployée et configurée !${NC}\n"
-        echo ""
-        echo "Connexion SSH:"
-        printf "  ${CYAN}ssh -i %s ec2-user@%s${NC}\n" "$ssh_key" "$instance_ip"
-        echo ""
-        echo "Services de monitoring:"
-        printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
-        printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
-        printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
-        echo ""
-        echo "Pour gérer l'instance:"
-        echo "  ./oceania credentials - Afficher les logins/passwords"
-        echo "  ./oceania status      - Voir l'état"
-        echo "  ./oceania destroy     - Détruire l'infrastructure"
-        echo ""
-    else
-        print_header "✗ ÉCHEC DU DÉPLOIEMENT"
-        log_error "Le déploiement a échoué"
-        log_info "Sauvegarde disponible: ${backup_path}"
-        log_info "Consultez les logs ci-dessus pour plus de détails"
-        exit 1
-    fi
+    do_deploy true
 }
 
 #################################################
@@ -706,11 +720,10 @@ cmd_destroy() {
     local backup_path=$(create_backup "pre-destroy-infra")
     log_success "Sauvegarde créée: ${backup_path}"
 
-    # Destruction de l'infrastructure EC2
     log_info "Destruction de l'infrastructure EC2..."
     cd "$TERRAFORM_INFRA_DIR"
     if [[ -f "terraform.tfstate" ]] || terraform show >/dev/null 2>&1; then
-        terraform destroy -auto-approve
+        run_terraform destroy -auto-approve
         log_success "Infrastructure EC2 détruite"
     else
         log_warning "Aucune infrastructure EC2 trouvée"
@@ -756,7 +769,7 @@ cmd_destroy_all() {
     printf "${RED}CETTE ACTION EST IRRÉVERSIBLE !${NC}\n"
     echo ""
 
-    if ! confirm_destructive "Cette action est irréversible" "DESTROY-ALL"; then
+    if ! confirm_destructive "Cette action va détruire TOUTE l'infrastructure (irréversible)"; then
         log_info "Destruction annulée"
         exit 0
     fi
@@ -769,7 +782,7 @@ cmd_destroy_all() {
     log_info "Destruction de l'infrastructure EC2..."
     cd "$TERRAFORM_INFRA_DIR"
     if [[ -f "terraform.tfstate" ]] || terraform show >/dev/null 2>&1; then
-        terraform destroy -auto-approve
+        run_terraform destroy -auto-approve
         log_success "Infrastructure EC2 détruite"
     else
         log_warning "Aucune infrastructure EC2 trouvée"
@@ -806,7 +819,7 @@ cmd_destroy_all() {
             done
         fi
 
-        terraform destroy -auto-approve
+        run_terraform destroy -auto-approve
         log_success "Backend Terraform détruit"
     else
         log_warning "Aucun backend Terraform trouvé"
@@ -1044,11 +1057,92 @@ cmd_status() {
 # Commande QUICKSTART
 #################################################
 
+prompt_with_default() {
+    local prompt=$1
+    local default=$2
+    local result
+
+    printf "${CYAN}?${NC}  %s [${YELLOW}%s${NC}]: " "$prompt" "$default" >&2
+    read -r result
+    echo "${result:-$default}"
+}
+
+prompt_choice() {
+    local prompt=$1
+    shift
+    local options=("$@")
+    local choice
+
+    printf "${CYAN}?${NC}  %s\n" "$prompt" >&2
+    for i in "${!options[@]}"; do
+        printf "   ${YELLOW}%d)${NC} %s\n" "$((i+1))" "${options[$i]}" >&2
+    done
+    printf "   Choix [${YELLOW}%s${NC}]: " "${options[0]}" >&2
+    read -r choice
+    choice=${choice:-1}
+
+    if [[ $choice -ge 1 && $choice -le ${#options[@]} ]]; then
+        echo "${options[$((choice-1))]}"
+    else
+        echo "${options[0]}"
+    fi
+}
+
+validate_ip() {
+    local ip=$1
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        local IFS='.'
+        read -ra octets <<< "$ip"
+        for octet in "${octets[@]}"; do
+            if [[ $octet -gt 255 ]]; then
+                return 1
+            fi
+        done
+        return 0
+    fi
+    return 1
+}
+
+validate_project_name() {
+    local name=$1
+    if [[ $name =~ ^[a-zA-Z][a-zA-Z0-9-]*$ && ${#name} -ge 3 && ${#name} -le 32 ]]; then
+        return 0
+    fi
+    return 1
+}
+
+validate_aws_region() {
+    local region=$1
+    local valid_regions="us-east-1 us-east-2 us-west-1 us-west-2 eu-west-1 eu-west-2 eu-west-3 eu-central-1 eu-north-1 ap-southeast-1 ap-southeast-2 ap-northeast-1 ap-northeast-2 ap-south-1 sa-east-1 ca-central-1"
+    if [[ " $valid_regions " =~ " $region " ]]; then
+        return 0
+    fi
+    return 1
+}
+
+prompt_validated() {
+    local prompt=$1
+    local default=$2
+    local validator=$3
+    local error_msg=$4
+    local result
+
+    while true; do
+        result=$(prompt_with_default "$prompt" "$default")
+        if $validator "$result"; then
+            echo "$result"
+            return 0
+        else
+            log_error "$error_msg" >&2
+        fi
+    done
+}
+
 cmd_quickstart() {
-    print_header "⚡ QUICKSTART - Préparation de l'environnement"
+    print_header "⚡ QUICKSTART - Configuration interactive"
 
     # 1. Vérification des prérequis
-    log_info "Étape 1/4 - Vérification des prérequis..."
+    log_info "Vérification des prérequis..."
     if ! check_prerequisites; then
         log_error "Installez les outils manquants avant de continuer"
         exit 1
@@ -1058,101 +1152,168 @@ cmd_quickstart() {
         log_error "Configurez AWS CLI avant de continuer"
         exit 1
     fi
+    log_success "Prérequis OK"
+    echo ""
 
-    # 2. Récupérer l'IP publique de l'utilisateur
-    log_info "Étape 2/4 - Détection de votre IP publique..."
-    local my_ip=""
-    my_ip=$(curl -s --max-time 5 https://checkip.amazonaws.com 2>/dev/null || \
-            curl -s --max-time 5 https://ifconfig.me 2>/dev/null || \
-            curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null || \
-            echo "")
+    # 2. Détection IP publique
+    log_info "Détection de votre IP publique..."
+    local detected_ip=""
+    detected_ip=$(curl -s --max-time 5 https://checkip.amazonaws.com 2>/dev/null || \
+                  curl -s --max-time 5 https://ifconfig.me 2>/dev/null || \
+                  curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null || \
+                  echo "")
 
-    if [[ -n "$my_ip" ]]; then
-        log_success "IP détectée: ${my_ip}"
+    if [[ -n "$detected_ip" ]]; then
+        log_success "IP détectée: ${detected_ip}"
     else
-        log_warning "Impossible de détecter votre IP automatiquement"
-        printf "Entrez votre IP publique (pour SSH): "
-        read -r my_ip
+        log_warning "Impossible de détecter votre IP"
     fi
+    echo ""
 
-    # 3. Configuration du backend Terraform
-    log_info "Étape 3/4 - Configuration du backend Terraform..."
-    cd "$TERRAFORM_BACKEND_DIR"
+    # 3. Questions interactives
+    print_header "📝 Configuration du projet"
 
-    if [[ -f "terraform.tfvars" ]]; then
-        log_warning "terraform.tfvars existe déjà dans backend/"
-        if ! confirm "Voulez-vous le recréer ?" "n"; then
-            log_info "Conservation du fichier existant"
-        else
-            cp terraform.tfvars.example terraform.tfvars
-            log_success "terraform.tfvars créé dans backend/"
-        fi
+    local project_name
+    project_name=$(prompt_validated "Nom du projet" "oceania-watch" validate_project_name "Le nom doit contenir 3-32 caractères (lettres, chiffres, tirets)")
+
+    local environment
+    environment=$(prompt_choice "Environnement" "Dev" "Staging" "Qual" "Prod")
+
+    local aws_region
+    aws_region=$(prompt_validated "Région AWS" "us-east-1" validate_aws_region "Région invalide. Ex: us-east-1, eu-west-1, ap-southeast-1")
+
+    local allowed_ip
+    if [[ -n "$detected_ip" ]]; then
+        allowed_ip=$(prompt_validated "IP autorisée pour SSH" "${detected_ip}" validate_ip "Format IP invalide (ex: 192.168.1.1)")
     else
-        if [[ -f "terraform.tfvars.example" ]]; then
-            cp terraform.tfvars.example terraform.tfvars
-            log_success "terraform.tfvars créé dans backend/"
-        else
-            log_error "terraform.tfvars.example non trouvé dans backend/"
-            exit 1
-        fi
+        allowed_ip=$(prompt_validated "IP autorisée pour SSH (votre IP publique)" "" validate_ip "Format IP invalide (ex: 192.168.1.1)")
     fi
 
-    # 4. Configuration de l'infrastructure Terraform
-    log_info "Étape 4/4 - Configuration de l'infrastructure Terraform..."
-    cd "$TERRAFORM_INFRA_DIR"
+    echo ""
+    print_header "📝 Configuration EC2 (optionnel)"
 
-    if [[ -f "terraform.tfvars" ]]; then
-        log_warning "terraform.tfvars existe déjà dans infrastructure/"
-        if ! confirm "Voulez-vous le recréer ?" "n"; then
-            log_info "Conservation du fichier existant"
-        else
-            create_infra_tfvars=true
-        fi
-    else
-        create_infra_tfvars=true
+    local instance_type
+    instance_type=$(prompt_with_default "Type d'instance EC2" "t3.large")
+
+    local volume_size
+    volume_size=$(prompt_with_default "Taille du disque (GB)" "100")
+
+    # 4. Résumé et confirmation
+    echo ""
+    print_header "📋 Résumé de la configuration"
+
+    printf "  Projet:      ${GREEN}%s${NC}\n" "$project_name"
+    printf "  Env:         ${GREEN}%s${NC}\n" "$environment"
+    printf "  Région AWS:  ${GREEN}%s${NC}\n" "$aws_region"
+    printf "  IP SSH:      ${GREEN}%s/32${NC}\n" "$allowed_ip"
+    printf "  Instance:    ${GREEN}%s${NC}\n" "$instance_type"
+    printf "  Disque:      ${GREEN}%s GB${NC}\n" "$volume_size"
+    echo ""
+
+    if ! confirm "Confirmer cette configuration ?" "y"; then
+        log_info "Configuration annulée"
+        exit 0
     fi
 
-    if [[ "${create_infra_tfvars:-false}" == true ]]; then
-        if [[ -f "terraform.tfvars.example" ]]; then
-            cp terraform.tfvars.example terraform.tfvars
-
-            # Mettre à jour l'IP SSH automatiquement
-            if [[ -n "$my_ip" ]]; then
-                sed -i.bak "s|allowed_ssh_ips.*=.*\[.*\]|allowed_ssh_ips   = [\"${my_ip}/32\"]|" terraform.tfvars
-                rm -f terraform.tfvars.bak
-                log_success "IP SSH configurée: ${my_ip}/32"
-            fi
-
-            log_success "terraform.tfvars créé dans infrastructure/"
-        else
-            log_error "terraform.tfvars.example non trouvé dans infrastructure/"
-            exit 1
-        fi
-    fi
-
-    # Résumé
+    # 5. Génération des fichiers
     echo ""
-    print_header "✓ ENVIRONNEMENT PRÊT"
+    log_info "Génération des fichiers de configuration..."
 
-    printf "${GREEN}Configuration terminée !${NC}\n"
-    echo ""
-    echo "Fichiers créés/vérifiés:"
-    printf "  ${CYAN}terraform/backend/terraform.tfvars${NC}\n"
-    printf "  ${CYAN}terraform/infrastructure/terraform.tfvars${NC}\n"
-    echo ""
+    # Backend terraform.tfvars
+    cat > "${TERRAFORM_BACKEND_DIR}/terraform.tfvars" <<EOF
+# Configuration générée par ./oceania quickstart
 
-    if [[ -n "$my_ip" ]]; then
-        echo "Votre IP configurée pour SSH: ${my_ip}/32"
-        echo ""
-    fi
+project_name      = "${project_name}"
+environment       = "${environment}"
+aws_region        = "${aws_region}"
+enable_versioning = true
+EOF
+    log_success "terraform/backend/terraform.tfvars créé"
 
-    echo "Vérifiez les fichiers de configuration si nécessaire:"
-    printf "  ${YELLOW}vim terraform/backend/terraform.tfvars${NC}\n"
-    printf "  ${YELLOW}vim terraform/infrastructure/terraform.tfvars${NC}\n"
+    # Infrastructure terraform.tfvars
+    cat > "${TERRAFORM_INFRA_DIR}/terraform.tfvars" <<EOF
+# Configuration générée par ./oceania quickstart
+
+project_name      = "${project_name}"
+environment       = "${environment}"
+aws_region        = "${aws_region}"
+allowed_ssh_ips   = ["${allowed_ip}/32"]
+
+instance_type     = "${instance_type}"
+root_volume_size  = ${volume_size}
+root_volume_type  = "gp3"
+
+enable_public_ip              = true
+enable_detailed_monitoring    = false
+enable_termination_protection = false
+
+ssh_key_directory = "~/.ssh/oceania"
+EOF
+    log_success "terraform/infrastructure/terraform.tfvars créé"
+
+    # Résumé final
     echo ""
-    echo "Prochaine étape - Déployer l'infrastructure:"
+    print_header "✓ CONFIGURATION TERMINÉE"
+
+    printf "${GREEN}Environnement prêt pour le déploiement !${NC}\n"
+    echo ""
+    echo "Prochaine étape:"
     printf "  ${GREEN}./oceania deploy-all${NC}\n"
     echo ""
+}
+
+#################################################
+# Commande CLEAN
+#################################################
+
+cmd_clean() {
+    print_header "🧹 NETTOYAGE DES FICHIERS LOCAUX"
+
+    log_info "Fichiers qui seront supprimés:"
+    echo ""
+    
+    local files_to_clean=(
+        "${TERRAFORM_BACKEND_DIR}/terraform.tfvars"
+        "${TERRAFORM_BACKEND_DIR}/.terraform"
+        "${TERRAFORM_BACKEND_DIR}/.terraform.lock.hcl"
+        "${TERRAFORM_BACKEND_DIR}/terraform.tfstate"
+        "${TERRAFORM_BACKEND_DIR}/terraform.tfstate.backup"
+        "${TERRAFORM_INFRA_DIR}/terraform.tfvars"
+        "${TERRAFORM_INFRA_DIR}/backend.hcl"
+        "${TERRAFORM_INFRA_DIR}/.terraform"
+        "${TERRAFORM_INFRA_DIR}/.terraform.lock.hcl"
+        "${TERRAFORM_INFRA_DIR}/terraform.tfstate"
+        "${TERRAFORM_INFRA_DIR}/terraform.tfstate.backup"
+        "${ANSIBLE_DIR}/inventory/dev.yml"
+        "$STATE_FILE"
+        "$CREDENTIALS_FILE"
+        "$BACKUP_DIR"
+    )
+
+    local found_files=()
+    for file in "${files_to_clean[@]}"; do
+        if [[ -e "$file" ]]; then
+            found_files+=("$file")
+            printf "  ${YELLOW}•${NC} %s\n" "${file#$SCRIPT_DIR/}"
+        fi
+    done
+
+    if [[ ${#found_files[@]} -eq 0 ]]; then
+        log_success "Aucun fichier à nettoyer"
+        return 0
+    fi
+
+    echo ""
+    if ! confirm "Supprimer ces fichiers ?" "n"; then
+        log_info "Nettoyage annulé"
+        return 0
+    fi
+
+    for file in "${found_files[@]}"; do
+        rm -rf "$file"
+    done
+
+    log_success "Nettoyage terminé"
 }
 
 #################################################
@@ -1181,10 +1342,12 @@ show_help() {
     printf "    ${BLUE}credentials${NC}           Afficher les credentials (URLs, logins, passwords)\n"
     echo "                          --regenerate Nouveau mot de passe Grafana"
     printf "    ${BLUE}status${NC}                Afficher l'état actuel du déploiement\n"
+    printf "    ${BLUE}clean${NC}                 Nettoyer les fichiers locaux (avant push)\n"
     printf "    ${BLUE}help${NC}                  Afficher cette aide\n"
     echo ""
     printf "${YELLOW}OPTIONS:${NC}\n"
     echo "    -q, --quiet     Mode silencieux (pas d'interactions)"
+    echo "    -v, --verbose   Mode verbeux (affiche les détails Terraform)"
     echo "    -h, --help      Afficher l'aide"
 }
 
@@ -1206,11 +1369,15 @@ main() {
                 QUIET_MODE=true
                 shift
                 ;;
+            -v|--verbose)
+                VERBOSE_MODE=true
+                shift
+                ;;
             -h|--help)
                 show_help
                 exit 0
                 ;;
-            quickstart|deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|credentials|help)
+            quickstart|deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|credentials|clean|help)
                 local command=$1
                 shift
                 break
@@ -1249,6 +1416,9 @@ main() {
             ;;
         credentials)
             cmd_credentials "$@"
+            ;;
+        clean)
+            cmd_clean "$@"
             ;;
         help)
             show_help
