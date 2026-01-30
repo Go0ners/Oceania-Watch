@@ -24,7 +24,7 @@
     - node-exporter
     - cadvisor
     - loki
-    - promtail
+    - alloy
   tags:
     - monitoring
 
@@ -41,7 +41,7 @@
     - { src: 'node-exporter-compose.yml.j2', dest: 'node-exporter/docker-compose.yml' }
     - { src: 'cadvisor-compose.yml.j2', dest: 'cadvisor/docker-compose.yml' }
     - { src: 'loki-compose.yml.j2', dest: 'loki/docker-compose.yml' }
-    - { src: 'promtail-compose.yml.j2', dest: 'promtail/docker-compose.yml' }
+    - { src: 'alloy-compose.yml.j2', dest: 'alloy/docker-compose.yml' }
   tags:
     - monitoring
 
@@ -56,7 +56,7 @@
     - { src: 'recording-rules.yml.j2', dest: 'prometheus/rules/recording.yml' }
     - { src: 'alertmanager.yml.j2', dest: 'alertmanager/alertmanager.yml' }
     - { src: 'loki-config.yml.j2', dest: 'loki/loki-config.yml' }
-    - { src: 'promtail-config.yml.j2', dest: 'promtail/promtail-config.yml' }
+    - { src: 'alloy-config.alloy.j2', dest: 'alloy/alloy-config.alloy' }
     - { src: 'grafana-datasource.yml.j2', dest: 'grafana/provisioning/datasources/datasource.yml' }
     - { src: 'grafana-dashboards.yml.j2', dest: 'grafana/provisioning/dashboards/dashboards.yml' }
   notify: Redémarrer la stack monitoring
@@ -99,7 +99,7 @@
     - node-exporter
     - cadvisor
     - loki
-    - promtail
+    - alloy
   register: containers_status
   until: containers_status.container.State.Status == "running"
   retries: 30
@@ -143,7 +143,7 @@
     - node-exporter
     - cadvisor
     - loki
-    - promtail
+    - alloy
   register: container_info
   tags:
     - monitoring
@@ -175,7 +175,7 @@
     - { name: 'Node Exporter', version: "{{ container_info.results[3].container.Config.Image.split(':')[1] | default('latest') }}" }
     - { name: 'cAdvisor', version: "{{ container_info.results[4].container.Config.Image.split(':')[1] | default('latest') }}" }
     - { name: 'Loki', version: "{{ container_info.results[5].container.Config.Image.split(':')[1] | default('latest') }}" }
-    - { name: 'Promtail', version: "{{ container_info.results[6].container.Config.Image.split(':')[1] | default('latest') }}" }
+    - { name: 'Alloy', version: "{{ container_info.results[6].container.Config.Image.split(':')[1] | default('latest') }}" }
   delegate_to: localhost
   become: no
   tags:

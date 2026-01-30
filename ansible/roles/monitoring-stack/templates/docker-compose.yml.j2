@@ -54,10 +54,10 @@ services:
     networks:
       - monitoring
 
-  promtail:
+  alloy:
     extends:
-      file: ./promtail/docker-compose.yml
-      service: promtail
+      file: ./alloy/docker-compose.yml
+      service: alloy
     networks:
       - monitoring
     depends_on:

@@ -45,8 +45,8 @@ loki_retention_period: "168h"
 loki_user_id: "10001"
 loki_group_id: "10001"
 
-# Promtail
-promtail_enabled: true
+# Alloy
+alloy_version: "latest"
 
 # Deployment
 monitoring_stack_dir: "/opt/monitoring"

@@ -1,0 +1,71 @@
+// Grafana Alloy configuration for log collection
+
+// Docker container logs discovery
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Relabel Docker container labels
+discovery.relabel "docker" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_id"]
+    target_label  = "container_id"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+}
+
+// Collect Docker logs
+loki.source.docker "docker" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.docker.output
+  forward_to = [loki.process.docker.receiver]
+}
+
+// Process Docker logs
+loki.process "docker" {
+  stage.docker {}
+  forward_to = [loki.write.default.receiver]
+}
+
+// System logs (Amazon Linux 2 / RHEL)
+local.file_match "messages" {
+  path_targets = [{"__path__" = "/var/log/messages", "job" = "messages"}]
+}
+
+loki.source.file "messages" {
+  targets    = local.file_match.messages.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+local.file_match "secure" {
+  path_targets = [{"__path__" = "/var/log/secure", "job" = "secure"}]
+}
+
+loki.source.file "secure" {
+  targets    = local.file_match.secure.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+// Send logs to Loki
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

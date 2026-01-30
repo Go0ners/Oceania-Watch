@@ -1,6 +1,6 @@
 # Monitoring Stack Role
 
-Role Ansible pour déployer une stack de monitoring complète avec Prometheus, Grafana, Loki, Alertmanager, Node Exporter, cAdvisor et Promtail.
+Role Ansible pour déployer une stack de monitoring complète avec Prometheus, Grafana, Loki, Alertmanager, Node Exporter, cAdvisor et Alloy.
 
 ## 📊 Stack de Monitoring
 
@@ -14,7 +14,7 @@ Role Ansible pour déployer une stack de monitoring complète avec Prometheus, G
 | **Node Exporter** | `prom/node-exporter:latest` | 9100 | Métriques système (CPU, RAM, Disk) |
 | **cAdvisor** | `gcr.io/cadvisor/cadvisor:latest` | 8080 | Métriques conteneurs Docker |
 | **Loki** | `grafana/loki:latest` | 3100 | Collecte et stockage des logs |
-| **Promtail** | `grafana/promtail:latest` | - | Agent de collecte des logs Docker |
+| **Alloy** | `grafana/alloy:latest` | - | Agent de collecte des logs Docker |
 
 ### Versions actuelles (tag `latest`)
 
@@ -128,9 +128,9 @@ prometheus_retention: "30d"
 ├── loki/
 │   ├── docker-compose.yml
 │   └── loki-config.yml
-├── promtail/
+├── alloy/
 │   ├── docker-compose.yml
-│   └── promtail-config.yml    # Config collecte logs
+│   └── alloy-config.alloy    # Config collecte logs
 ├── node-exporter/
 │   └── docker-compose.yml
 └── cadvisor/
@@ -289,4 +289,4 @@ curl http://localhost:9093/-/healthy
 - **Node Exporter**: latest
 - **cAdvisor**: latest
 - **Loki**: latest
-- **Promtail**: latest
+- **Alloy**: latest
