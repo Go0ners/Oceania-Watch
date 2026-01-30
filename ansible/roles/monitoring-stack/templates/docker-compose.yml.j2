@@ -53,3 +53,12 @@ services:
       service: loki
     networks:
       - monitoring
+
+  promtail:
+    extends:
+      file: ./promtail/docker-compose.yml
+      service: promtail
+    networks:
+      - monitoring
+    depends_on:
+      - loki

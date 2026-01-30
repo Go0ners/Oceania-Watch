@@ -1,6 +1,6 @@
 # Monitoring Stack Role
 
-Role Ansible pour déployer une stack de monitoring complète avec Prometheus, Grafana, Loki, Alertmanager, Node Exporter et cAdvisor.
+Role Ansible pour déployer une stack de monitoring complète avec Prometheus, Grafana, Loki, Alertmanager, Node Exporter, cAdvisor et Promtail.
 
 ## 📊 Stack de Monitoring
 
@@ -14,6 +14,7 @@ Role Ansible pour déployer une stack de monitoring complète avec Prometheus, G
 | **Node Exporter** | `prom/node-exporter:latest` | 9100 | Métriques système (CPU, RAM, Disk) |
 | **cAdvisor** | `gcr.io/cadvisor/cadvisor:latest` | 8080 | Métriques conteneurs Docker |
 | **Loki** | `grafana/loki:latest` | 3100 | Collecte et stockage des logs |
+| **Promtail** | `grafana/promtail:latest` | - | Agent de collecte des logs Docker |
 
 ### Versions actuelles (tag `latest`)
 
@@ -107,9 +108,15 @@ prometheus_retention: "30d"
 │   ├── docker-compose.yml
 │   ├── prometheus.yml         # Configuration Prometheus
 │   └── rules/
-│       └── alerts.yml         # Règles d'alertes
+│       ├── alerts.yml         # Règles d'alertes
+│       └── recording.yml      # Recording rules
 ├── grafana/
 │   ├── docker-compose.yml
+│   ├── dashboards/            # Dashboards JSON
+│   │   ├── node-exporter.json
+│   │   ├── docker-containers.json
+│   │   ├── monitoring-health.json
+│   │   └── logs-explorer.json
 │   └── provisioning/
 │       ├── datasources/
 │       │   └── datasource.yml  # Prometheus + Loki datasources
@@ -121,6 +128,9 @@ prometheus_retention: "30d"
 ├── loki/
 │   ├── docker-compose.yml
 │   └── loki-config.yml
+├── promtail/
+│   ├── docker-compose.yml
+│   └── promtail-config.yml    # Config collecte logs
 ├── node-exporter/
 │   └── docker-compose.yml
 └── cadvisor/
@@ -132,19 +142,41 @@ prometheus_retention: "30d"
 ### Alertes critiques
 - **InstanceDown** : Instance arrêtée pendant 5min
 - **ContainerDown** : Conteneur Docker arrêté pendant 5min
+- **PrometheusTargetMissing** : Target Prometheus inaccessible
+- **PrometheusConfigReloadFailed** : Échec du rechargement de config
 
 ### Alertes warning
 - **HighCPUUsage** : CPU > 80% pendant 10min
 - **HighMemoryUsage** : RAM > 85% pendant 10min
 - **DiskSpaceLow** : Disk < 15% pendant 5min
+- **HighDiskIOUtilization** : I/O disque > 90%
+- **InodesLow** : Inodes < 10%
+- **NetworkReceiveErrors** : Erreurs réseau en réception
+- **NetworkTransmitErrors** : Erreurs réseau en transmission
+- **ContainerRestartLoop** : Conteneur redémarre > 3x/heure
+- **ContainerHighCPU** : Conteneur CPU > 80%
+- **ContainerHighMemory** : Conteneur RAM > 85% de la limite
+- **PrometheusTooManyRestarts** : Prometheus redémarre trop souvent
 
 ## 🎨 Dashboards Grafana
 
 Les dashboards sont automatiquement provisionnés :
 
-1. **Node Exporter Full** : Métriques système complètes
-2. **Docker Container Monitoring** : Métriques conteneurs
-3. **Prometheus Stats** : Statistiques Prometheus
+1. **Node Exporter - Host Metrics** : CPU, RAM, Disk, Network, Load Average
+2. **Docker Containers** : CPU, RAM, Network par conteneur, Restarts
+3. **Monitoring Stack Health** : Status des services, Scrape metrics, Alertes actives
+4. **Logs Explorer** : Logs Docker via Loki, filtrage par conteneur, erreurs
+
+## 📈 Recording Rules
+
+Des recording rules Prometheus sont configurées pour optimiser les requêtes :
+
+- `instance:node_cpu_utilization:percent` - CPU usage en %
+- `instance:node_memory_utilization:percent` - RAM usage en %
+- `instance:node_filesystem_utilization:percent` - Disk usage en %
+- `container:cpu_utilization:percent` - CPU conteneur en %
+- `container:memory_utilization:percent` - RAM conteneur en %
+- `container:restarts:count24h` - Nombre de restarts sur 24h
 
 ## 🔧 Maintenance
 
@@ -257,3 +289,4 @@ curl http://localhost:9093/-/healthy
 - **Node Exporter**: latest
 - **cAdvisor**: latest
 - **Loki**: latest
+- **Promtail**: latest

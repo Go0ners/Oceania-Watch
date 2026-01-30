@@ -26,7 +26,7 @@ prometheus_group_id: "65534"
 grafana_admin_user: "admin"
 grafana_admin_password: "{{ vault_grafana_admin_password | default('changeme') }}"
 grafana_root_url: "http://{{ ansible_host }}:3000"
-grafana_plugins: ""
+grafana_plugins: "grafana-clock-panel"
 grafana_user_id: "472"
 grafana_group_id: "472"
 
@@ -44,6 +44,9 @@ node_exporter_group_id: "65534"
 loki_retention_period: "168h"
 loki_user_id: "10001"
 loki_group_id: "10001"
+
+# Promtail
+promtail_enabled: true
 
 # Deployment
 monitoring_stack_dir: "/opt/monitoring"

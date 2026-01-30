@@ -46,3 +46,105 @@ groups:
         annotations:
           summary: 'Container {{ "{{" }} $labels.name {{ "}}" }} is down'
           description: 'Container {{ "{{" }} $labels.name {{ "}}" }} has been down for more than 5 minutes.'
+
+  - name: disk_alerts
+    interval: 30s
+    rules:
+      - alert: HighDiskIOUtilization
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High disk I/O on {{ "{{" }} $labels.instance {{ "}}" }}'
+          description: 'Disk {{ "{{" }} $labels.device {{ "}}" }} I/O utilization is above 90%'
+
+      - alert: InodesLow
+        expr: (node_filesystem_files_free{mountpoint="/"} / node_filesystem_files{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Low inodes on {{ "{{" }} $labels.instance {{ "}}" }}'
+          description: 'Available inodes is below 10% (current: {{ "{{" }} $value {{ "}}" }}%)'
+
+  - name: network_alerts
+    interval: 30s
+    rules:
+      - alert: NetworkReceiveErrors
+        expr: rate(node_network_receive_errs_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Network receive errors on {{ "{{" }} $labels.instance {{ "}}" }}'
+          description: 'Interface {{ "{{" }} $labels.device {{ "}}" }} has receive errors'
+
+      - alert: NetworkTransmitErrors
+        expr: rate(node_network_transmit_errs_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Network transmit errors on {{ "{{" }} $labels.instance {{ "}}" }}'
+          description: 'Interface {{ "{{" }} $labels.device {{ "}}" }} has transmit errors'
+
+  - name: container_alerts
+    interval: 30s
+    rules:
+      - alert: ContainerRestartLoop
+        expr: increase(container_start_time_seconds{name!=""}[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Container {{ "{{" }} $labels.name {{ "}}" }} restarting frequently'
+          description: 'Container {{ "{{" }} $labels.name {{ "}}" }} has restarted more than 3 times in the last hour'
+
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total{name!=""}[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Container {{ "{{" }} $labels.name {{ "}}" }} high CPU'
+          description: 'Container {{ "{{" }} $labels.name {{ "}}" }} CPU usage is above 80%'
+
+      - alert: ContainerHighMemory
+        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Container {{ "{{" }} $labels.name {{ "}}" }} high memory'
+          description: 'Container {{ "{{" }} $labels.name {{ "}}" }} memory usage is above 85% of limit'
+
+  - name: prometheus_alerts
+    interval: 30s
+    rules:
+      - alert: PrometheusTargetMissing
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Prometheus target missing: {{ "{{" }} $labels.job {{ "}}" }}'
+          description: 'Target {{ "{{" }} $labels.instance {{ "}}" }} is down'
+
+      - alert: PrometheusTooManyRestarts
+        expr: changes(process_start_time_seconds{job="prometheus"}[1h]) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Prometheus restarting frequently'
+          description: 'Prometheus has restarted more than 2 times in the last hour'
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Prometheus config reload failed'
+          description: 'Prometheus configuration reload has failed'
