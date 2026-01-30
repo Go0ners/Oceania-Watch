@@ -50,8 +50,7 @@ terraform.rc
 *.retry
 
 # Inventaires dynamiques générés
-ansible/inventory/terraform.json
-ansible/inventory/production.yml
+ansible/inventory/*
 
 # Vault password files
 .vault_pass

@@ -138,7 +138,7 @@
   ansible.builtin.copy:
     content: |
       # Versions de la stack monitoring
-      # Généré automatiquement le {{ ansible_date_time.iso8601 }}
+      # Généré automatiquement le {{ ansible_facts['date_time']['iso8601'] }}
 
       {% for container in container_info.results %}
       {{ container.item }}: {{ container.container.Config.Image }}
@@ -170,7 +170,7 @@
   ansible.builtin.lineinfile:
     path: "{{ role_path }}/README.md"
     regexp: "^\\*\\*Dernière vérification\\*\\*:"
-    line: "**Dernière vérification**: {{ ansible_date_time.date }}"
+    line: "**Dernière vérification**: {{ ansible_facts['date_time']['date'] }}"
     state: present
   delegate_to: localhost
   become: no

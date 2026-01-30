@@ -74,7 +74,6 @@ data "aws_route_table" "default" {
 }
 
 # Create a public subnet in the default VPC
-# Using 172.31.255.0/24 to minimize conflict risk with default subnets (typically 172.31.0.0/20, 172.31.16.0/20, etc.)
 resource "aws_subnet" "public" {
   vpc_id                  = data.aws_vpc.default.id
   cidr_block              = "172.31.255.0/24"

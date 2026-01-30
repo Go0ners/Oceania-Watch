@@ -322,11 +322,13 @@ deploy_infrastructure() {
     cd "$TERRAFORM_INFRA_DIR"
 
     if [[ -n "$BUCKET_NAME" ]]; then
+        # Récupérer la région depuis le backend
+        local BACKEND_REGION=$(cd "$TERRAFORM_BACKEND_DIR" && terraform output -raw aws_region 2>/dev/null || echo "eu-west-1")
         log_info "Configuration backend avec bucket: $BUCKET_NAME"
         cat > backend.hcl <<EOF
 bucket       = "$BUCKET_NAME"
 key          = "infrastructure/terraform.tfstate"
-region       = "us-east-1"
+region       = "$BACKEND_REGION"
 use_lockfile = true
 encrypt      = true
 EOF
@@ -1039,6 +1041,121 @@ cmd_status() {
 }
 
 #################################################
+# Commande QUICKSTART
+#################################################
+
+cmd_quickstart() {
+    print_header "⚡ QUICKSTART - Préparation de l'environnement"
+
+    # 1. Vérification des prérequis
+    log_info "Étape 1/4 - Vérification des prérequis..."
+    if ! check_prerequisites; then
+        log_error "Installez les outils manquants avant de continuer"
+        exit 1
+    fi
+
+    if ! check_aws_credentials; then
+        log_error "Configurez AWS CLI avant de continuer"
+        exit 1
+    fi
+
+    # 2. Récupérer l'IP publique de l'utilisateur
+    log_info "Étape 2/4 - Détection de votre IP publique..."
+    local my_ip=""
+    my_ip=$(curl -s --max-time 5 https://checkip.amazonaws.com 2>/dev/null || \
+            curl -s --max-time 5 https://ifconfig.me 2>/dev/null || \
+            curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null || \
+            echo "")
+
+    if [[ -n "$my_ip" ]]; then
+        log_success "IP détectée: ${my_ip}"
+    else
+        log_warning "Impossible de détecter votre IP automatiquement"
+        printf "Entrez votre IP publique (pour SSH): "
+        read -r my_ip
+    fi
+
+    # 3. Configuration du backend Terraform
+    log_info "Étape 3/4 - Configuration du backend Terraform..."
+    cd "$TERRAFORM_BACKEND_DIR"
+
+    if [[ -f "terraform.tfvars" ]]; then
+        log_warning "terraform.tfvars existe déjà dans backend/"
+        if ! confirm "Voulez-vous le recréer ?" "n"; then
+            log_info "Conservation du fichier existant"
+        else
+            cp terraform.tfvars.example terraform.tfvars
+            log_success "terraform.tfvars créé dans backend/"
+        fi
+    else
+        if [[ -f "terraform.tfvars.example" ]]; then
+            cp terraform.tfvars.example terraform.tfvars
+            log_success "terraform.tfvars créé dans backend/"
+        else
+            log_error "terraform.tfvars.example non trouvé dans backend/"
+            exit 1
+        fi
+    fi
+
+    # 4. Configuration de l'infrastructure Terraform
+    log_info "Étape 4/4 - Configuration de l'infrastructure Terraform..."
+    cd "$TERRAFORM_INFRA_DIR"
+
+    if [[ -f "terraform.tfvars" ]]; then
+        log_warning "terraform.tfvars existe déjà dans infrastructure/"
+        if ! confirm "Voulez-vous le recréer ?" "n"; then
+            log_info "Conservation du fichier existant"
+        else
+            create_infra_tfvars=true
+        fi
+    else
+        create_infra_tfvars=true
+    fi
+
+    if [[ "${create_infra_tfvars:-false}" == true ]]; then
+        if [[ -f "terraform.tfvars.example" ]]; then
+            cp terraform.tfvars.example terraform.tfvars
+
+            # Mettre à jour l'IP SSH automatiquement
+            if [[ -n "$my_ip" ]]; then
+                sed -i.bak "s|allowed_ssh_ips.*=.*\[.*\]|allowed_ssh_ips   = [\"${my_ip}/32\"]|" terraform.tfvars
+                rm -f terraform.tfvars.bak
+                log_success "IP SSH configurée: ${my_ip}/32"
+            fi
+
+            log_success "terraform.tfvars créé dans infrastructure/"
+        else
+            log_error "terraform.tfvars.example non trouvé dans infrastructure/"
+            exit 1
+        fi
+    fi
+
+    # Résumé
+    echo ""
+    print_header "✓ ENVIRONNEMENT PRÊT"
+
+    printf "${GREEN}Configuration terminée !${NC}\n"
+    echo ""
+    echo "Fichiers créés/vérifiés:"
+    printf "  ${CYAN}terraform/backend/terraform.tfvars${NC}\n"
+    printf "  ${CYAN}terraform/infrastructure/terraform.tfvars${NC}\n"
+    echo ""
+
+    if [[ -n "$my_ip" ]]; then
+        echo "Votre IP configurée pour SSH: ${my_ip}/32"
+        echo ""
+    fi
+
+    echo "Vérifiez les fichiers de configuration si nécessaire:"
+    printf "  ${YELLOW}vim terraform/backend/terraform.tfvars${NC}\n"
+    printf "  ${YELLOW}vim terraform/infrastructure/terraform.tfvars${NC}\n"
+    echo ""
+    echo "Prochaine étape - Déployer l'infrastructure:"
+    printf "  ${GREEN}./oceania deploy-all${NC}\n"
+    echo ""
+}
+
+#################################################
 # Aide et usage
 #################################################
 
@@ -1047,6 +1164,9 @@ show_help() {
     echo ""
     printf "${YELLOW}USAGE:${NC}\n"
     echo "    ./oceania <commande> [options]"
+    echo ""
+    printf "${YELLOW}COMMANDES DE PRÉPARATION:${NC}\n"
+    printf "    ${GREEN}quickstart${NC}            Préparer l'environnement pour le déploiement\n"
     echo ""
     printf "${YELLOW}COMMANDES DE DÉPLOIEMENT:${NC}\n"
     printf "    ${GREEN}deploy-all${NC}            Déployer TOUT de A à Z\n"
@@ -1062,6 +1182,7 @@ show_help() {
     echo "                          --regenerate Nouveau mot de passe Grafana"
     printf "    ${BLUE}status${NC}                Afficher l'état actuel du déploiement\n"
     printf "    ${BLUE}help${NC}                  Afficher cette aide\n"
+    echo ""
     printf "${YELLOW}OPTIONS:${NC}\n"
     echo "    -q, --quiet     Mode silencieux (pas d'interactions)"
     echo "    -h, --help      Afficher l'aide"
@@ -1089,7 +1210,7 @@ main() {
                 show_help
                 exit 0
                 ;;
-            deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|credentials|help)
+            quickstart|deploy-all|deploy-infra|deploy-monitoring|destroy|destroy-all|status|credentials|help)
                 local command=$1
                 shift
                 break
@@ -1105,6 +1226,9 @@ main() {
 
     # Exécution de la commande
     case ${command:-help} in
+        quickstart)
+            cmd_quickstart "$@"
+            ;;
         deploy-all)
             cmd_deploy_all "$@"
             ;;

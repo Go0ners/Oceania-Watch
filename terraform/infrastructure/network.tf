@@ -31,6 +31,60 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Grafana access from allowed IPs
+  ingress {
+    description = "Grafana access"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
+  # Prometheus access from allowed IPs
+  ingress {
+    description = "Prometheus access"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
+  # Alertmanager access from allowed IPs
+  ingress {
+    description = "Alertmanager access"
+    from_port   = 9093
+    to_port     = 9093
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
+  # Node Exporter access from allowed IPs
+  ingress {
+    description = "Node Exporter access"
+    from_port   = 9100
+    to_port     = 9100
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
+  # cAdvisor access from allowed IPs
+  ingress {
+    description = "cAdvisor access"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
+  # Loki access from allowed IPs
+  ingress {
+    description = "Loki access"
+    from_port   = 3100
+    to_port     = 3100
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
   # All outbound traffic
   egress {
     description = "All outbound traffic"
