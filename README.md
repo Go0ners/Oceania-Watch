@@ -50,11 +50,11 @@ Le projet combine :
 
 ### Objectifs
 
-- ✅ **Monitoring universel** : Surveiller n'importe quelle infrastructure (cloud, on-prem, hybride)
-- ✅ **Observabilité complète** : Métriques, logs, alertes en temps réel
-- ✅ **Déploiement automatisé** : Infrastructure as Code reproductible
-- ✅ **Multi-provider** : Compatible AWS, Azure, GCP, bare-metal
-- ✅ **Simplicité** : Gestion unifiée via script `oceania`
+- **Monitoring universel** : Surveiller n'importe quelle infrastructure (cloud, on-prem, hybride)
+- **Observabilité complète** : Métriques, logs, alertes en temps réel
+- **Déploiement automatisé** : Infrastructure as Code reproductible
+- **Multi-provider** : Compatible AWS, Azure, GCP, bare-metal
+- **Simplicité** : Gestion unifiée via script `oceania`
 
 ### Composants Principaux
 
@@ -62,7 +62,7 @@ Le projet combine :
 |-----------|-------------|-------------|
 | **Collecte Métriques** | Prometheus | Time-series database, scraping, alerting |
 | **Visualisation** | Grafana | Dashboards interactifs, multi-datasources |
-| **Logs** | Loki | Agrégation et analyse de logs |
+| **Logs** | Loki + Alloy | Agrégation et analyse de logs |
 | **Alerting** | Alertmanager | Gestion et routage des alertes |
 | **Exporters** | Node, cAdvisor | Métriques système et conteneurs |
 | **Infrastructure** | Terraform + Ansible | Provisioning et configuration automatisés |
@@ -113,6 +113,9 @@ Le projet combine :
 │  │  │  │  │cAdvisor  │  │Alertmgr  │            │      │      │     │
 │  │  │  │  │  :8080   │  │  :9093   │            │      │      │     │
 │  │  │  │  └──────────┘  └──────────┘            │      │      │     │
+│  │  │  │  ┌──────────┐                          │      │      │     │
+│  │  │  │  │  Alloy   │  (log collector)         │      │      │     │
+│  │  │  │  └──────────┘                          │      │      │     │
 │  │  │  └────────────────────────────────────────┘      │      │     │
 │  │  │                                                  │      │     │
 │  │  │  ┌────────────────┐                              │      │     │
@@ -208,6 +211,7 @@ Le projet combine :
 | **Node Exporter** | 1.10.2 | 9100 | Métriques système (CPU, RAM, Disk) |
 | **cAdvisor** | 0.53.0 | 8080 | Métriques des conteneurs Docker |
 | **Loki** | 3.5.8 | 3100 | Agrégation de logs |
+| **Alloy** | latest | - | Collecte de logs (remplace Promtail) |
 
 ### Architecture Monitoring
 
@@ -695,7 +699,7 @@ enable_versioning = true
 project_name      = "oceania-watch"
 environment       = "dev"
 aws_region        = "us-east-1"
-allowed_ssh_ips   = ["203.0.113.45/32"]  # VOTRE IP !
+allowed_ssh_ips   = ["1.2.3.4/32"]  # VOTRE IP !
 instance_type     = "t3.large"
 root_volume_size  = 100
 ```
@@ -1071,6 +1075,18 @@ OceaniaWatch/
 
 ## 📜 Changelog
 
+### Version 2.1.0 (2026-01-30)
+
+**Ajouté** :
+- ✅ 4 dashboards Grafana pré-configurés (Node, Docker, Health, Logs)
+- ✅ 15 alertes supplémentaires (Disk I/O, Network, Container restarts)
+- ✅ 16 recording rules Prometheus pour optimiser les requêtes
+- ✅ Grafana Alloy pour la collecte de logs (remplace Promtail deprecated)
+- ✅ Datasource UIDs pour compatibilité dashboards
+
+**Modifié** :
+- 🔄 Migration Promtail → Alloy (Promtail EOL Mars 2026)
+
 ### Version 2.0.0 (2024-11-18)
 
 **Ajouté** :
@@ -1130,6 +1146,6 @@ OceaniaWatch DevOps Team
 
 ---
 
-**Dernière mise à jour** : 18 Novembre 2024  
-**Version** : 2.0.0  
+**Dernière mise à jour** : 30 Janvier 2026  
+**Version** : 2.1.0  
 **Statut** : Production Ready ✅
