@@ -596,7 +596,7 @@ Génère un nouveau mot de passe fort, met à jour Grafana et sauvegarde dans `.
 | **Node Exporter** | http://IP:9100/metrics | - | Métriques système brutes |
 | **cAdvisor** | http://IP:8080 | - | Métriques conteneurs |
 | **Loki** | http://IP:3100 | - | Stockage et API logs |
-| **Alloy** | http://IP:12345 | - | Collecte de logs (Web UI) |
+| **Alloy** | http://IP:12345 | - | Collecte de logs |
 
 ### Première Connexion Grafana
 
@@ -660,6 +660,26 @@ rate(node_network_receive_bytes_total[5m])
 ```yaml
 # ansible/inventory/group_vars/monitoring.yml
 alertmanager_webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+#### Microsoft Teams
+
+Teams nécessite un adaptateur. Option recommandée : [prometheus-msteams](https://github.com/prometheus-msteams/prometheus-msteams)
+
+```bash
+# Déployer l'adaptateur (à ajouter dans docker-compose)
+docker run -d -p 2000:2000 \
+  -e TEAMS_INCOMING_WEBHOOK_URL="https://outlook.office.com/webhook/..." \
+  quay.io/prometheusmsteams/prometheus-msteams
+```
+
+```yaml
+# Dans alertmanager.yml.j2
+receivers:
+  - name: 'teams'
+    webhook_configs:
+      - url: 'http://prometheus-msteams:2000/alertmanager'
+        send_resolved: true
 ```
 
 #### Email (via SMTP)
@@ -831,6 +851,19 @@ ansible/inventory/group_vars/vault.yml
      cidr_blocks = ["VOTRE_IP/32"]
    }
    ```
+
+### Connexion d'Infrastructures Clientes
+
+Pour permettre à des infrastructures externes d'envoyer leurs métriques à OceaniaWatch les clients poussent leurs métriques vers OceaniaWatch (Push avec Remote Write (Sécurisé)) :
+
+```yaml
+# Sur le client - prometheus.yml
+remote_write:
+  - url: "https://oceaniawatch.example.com/api/v1/write"
+    basic_auth:
+      username: "client_1"
+      password: "secret"
+```
 
 ---
 
@@ -1169,7 +1202,8 @@ MIT
 
 ## 👥 Auteurs
 
-OceaniaWatch DevOps Team
+Maxime GIQUEL  
+contact.lr8gr@aleeas.com
 
 ---
 
@@ -1188,14 +1222,15 @@ OceaniaWatch DevOps Team
 2. 🔄 Intégrer AWS CloudWatch
 3. 🔄 Reverse proxy (Traefik/Nginx)
 4. 🔄 HTTPS avec Let's Encrypt
-5. 🔄 Authentification externe (LDAP, OAuth)
 
 ### Long Terme
-1. 🚀 Multi-région
-2. 🚀 Auto Scaling Group + ALB
-3. 🚀 Kubernetes (EKS)
-4. 🚀 GitOps (ArgoCD/Flux)
-5. 🚀 Gestion des alerte de N1 via IA.
+1. 🚀 Gestion des alertes de N1 via IA.2
+2. 🚀 Authentification externe (LDAP, OAuth)
+3. 🚀 Multi-région
+4. 🚀 Auto Scaling Group + ALB
+5. 🚀 Kubernetes (EKS)
+6. 🚀 GitOps (ArgoCD/Flux)
+
 
 ---
 
