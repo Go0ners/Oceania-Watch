@@ -3,6 +3,8 @@ services:
     image: grafana/alloy:{{ alloy_version | default('latest') }}
     container_name: alloy
     restart: unless-stopped
+    ports:
+      - "{{ alloy_port | default(12345) }}:12345"
     volumes:
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -12,3 +14,4 @@ services:
       - run
       - /etc/alloy/config.alloy
       - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345

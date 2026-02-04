@@ -285,6 +285,9 @@ save_credentials() {
   },
   "loki": {
     "url": "http://$ip:3100"
+  },
+  "alloy": {
+    "url": "http://$ip:12345"
   }
 }
 EOF
@@ -609,6 +612,10 @@ do_deploy() {
             printf "  ${CYAN}Prometheus:    http://%s:9090${NC}\n" "$instance_ip"
             printf "  ${CYAN}Grafana:       http://%s:3000${NC}\n" "$instance_ip"
             printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Node Exporter: http://%s:9100/metrics${NC}\n" "$instance_ip"
+            printf "  ${CYAN}cAdvisor:      http://%s:8080${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Loki:          http://%s:3100${NC}\n" "$instance_ip"
+            printf "  ${CYAN}Alloy:         http://%s:12345${NC}\n" "$instance_ip"
             echo ""
             echo "Pour gérer l'instance:"
             echo "  ./oceania credentials - Afficher les logins/passwords"
@@ -677,6 +684,8 @@ cmd_deploy_monitoring() {
         printf "  ${CYAN}Alertmanager:  http://%s:9093${NC}\n" "$instance_ip"
         printf "  ${CYAN}Node Exporter: http://%s:9100/metrics${NC}\n" "$instance_ip"
         printf "  ${CYAN}cAdvisor:      http://%s:8080${NC}\n" "$instance_ip"
+        printf "  ${CYAN}Loki:          http://%s:3100${NC}\n" "$instance_ip"
+        printf "  ${CYAN}Alloy:         http://%s:12345${NC}\n" "$instance_ip"
         echo ""
         log_info "Pour afficher les credentials: ./oceania credentials"
         echo ""
@@ -928,6 +937,9 @@ cmd_credentials() {
         echo ""
         printf "${CYAN}Loki:${NC}\n"
         printf "  URL:      ${CYAN}http://%s:3100${NC}\n" "$ip"
+        echo ""
+        printf "${CYAN}Alloy:${NC}\n"
+        printf "  URL:      ${CYAN}http://%s:12345${NC}\n" "$ip"
         echo ""
         log_info "Pour régénérer le mot de passe Grafana: ./oceania credentials --regenerate"
     fi

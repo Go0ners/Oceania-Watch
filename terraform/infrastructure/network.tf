@@ -85,6 +85,15 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = var.allowed_ssh_ips
   }
 
+  # Alloy Web UI access from allowed IPs
+  ingress {
+    description = "Alloy Web UI access"
+    from_port   = 12345
+    to_port     = 12345
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_ips
+  }
+
   # All outbound traffic
   egress {
     description = "All outbound traffic"

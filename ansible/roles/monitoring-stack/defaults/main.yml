@@ -45,8 +45,9 @@ loki_retention_period: "168h"
 loki_user_id: "10001"
 loki_group_id: "10001"
 
-# Alloy
+# Alloy (log collector with Web UI)
 alloy_version: "latest"
+alloy_port: 12345
 
 # Deployment
 monitoring_stack_dir: "/opt/monitoring"

@@ -1,6 +1,6 @@
 # OceaniaWatch - Infrastructure as Code
 
-**Déploiement automatisé d'infrastructure AWS avec Terraform, Ansible et Stack Monitoring**
+**Déploiement automatisé d'une stack de monitoring sur AWS via Terraform et Ansible**
 
 [![Infrastructure](https://img.shields.io/badge/Infrastructure-AWS-orange)](https://aws.amazon.com)
 [![IaC](https://img.shields.io/badge/IaC-Terraform-purple)](https://terraform.io)
@@ -34,7 +34,7 @@
 
 > *"Big Brother is watching you"* - George Orwell, 1984
 
-**OceaniaWatch** est une plateforme de monitoring et d'observabilité complète, inspirée du concept de surveillance omniprésente du roman dystopique *1984*. Tout comme Oceania surveillait chaque aspect de la société, OceaniaWatch observe en temps réel l'ensemble de votre infrastructure.
+**OceaniaWatch** est une plateforme de monitoring et d'observabilité complète, inspirée du concept de surveillance omniprésente du roman dystopique *1984*. Tout comme en Oceania où un gouvernement observe et contrôle chaque aspect de la société, OceaniaWatch observe en temps réel l'ensemble de votre infrastructure et a comme ambition d'intervenir pour corriger les divergences d'état.
 
 Cette solution permet de monitorer n'importe quel type d'infrastructure :
 - **Cloud providers** : AWS, Azure, GCP, DigitalOcean
@@ -76,28 +76,27 @@ Le projet combine :
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         AWS Cloud (us-east-1)                       │
+│                              AWS Cloud                              │
 │                                                                     │
 │  ┌────────────────────┐                                             │
 │  │  Backend Terraform │                                             │
 │  │  ┌──────────────┐  │  State Storage + Versioning                 │
-│  │  │ S3 (native)  │  │  Native S3 state locking (use_lockfile)     │
+│  │  │ S3           │  │  Native S3 state locking                    │
 │  │  └──────────────┘  │                                             │
 │  └────────────────────┘                                             │
 │           │                                                         │
 │           │ Remote State                                            │
 │           ▼                                                         │
 │  ┌────────────────────────────────────────────────────────────┐     │
-│  │  VPC (Default)                                             │     │
+│  │  VPC                                                       │     │
 │  │                                                            │     │
 │  │  ┌──────────────────────────────────────────────────┐      │     │
-│  │  │  EC2 Instance (t3.large)                         │      │     │
+│  │  │  EC2 Instance                                    │      │     │
 │  │  │  - Amazon Linux 2023                             │      │     │
-│  │  │  - Docker 29.0.0 + Compose 2.40.3                │      │     │
-│  │  │  - 100GB EBS gp3 (encrypted)                     │      │     │
+│  │  │  - Docker + Compose                              │      │     │
 │  │  │                                                  │      │     │
 │  │  │  ┌────────────────────────────────────────┐      │      │     │
-│  │  │  │  Stack Monitoring (Docker Compose)     │      │      │     │
+│  │  │  │  Stack Monitoring                      │      │      │     │
 │  │  │  │                                        │      │      │     │
 │  │  │  │  ┌──────────┐  ┌──────────┐            │      │      │     │
 │  │  │  │  │Prometheus│  │ Grafana  │            │      │      │     │
@@ -114,30 +113,24 @@ Le projet combine :
 │  │  │  │  │  :8080   │  │  :9093   │            │      │      │     │
 │  │  │  │  └──────────┘  └──────────┘            │      │      │     │
 │  │  │  │  ┌──────────┐                          │      │      │     │
-│  │  │  │  │  Alloy   │  (log collector)         │      │      │     │
+│  │  │  │  │  Alloy   │                          │      │      │     │
+│  │  │  │  │  :12345  │                          │      │      │     │
 │  │  │  │  └──────────┘                          │      │      │     │
 │  │  │  └────────────────────────────────────────┘      │      │     │
 │  │  │                                                  │      │     │
 │  │  │  ┌────────────────┐                              │      │     │
-│  │  │  │  Elastic IP    │  44.x.x.x                    │      │     │
+│  │  │  │  Elastic IP    │                              │      │     │
 │  │  │  └────────────────┘                              │      │     │
 │  │  │  ┌────────────────┐                              │      │     │
 │  │  │  │ Security Group │                              │      │     │
-│  │  │  │ - SSH: 22      │  Custom IPs                  │      │     │
-│  │  │  │ - HTTP: 80     │  0.0.0.0/0                   │      │     │
-│  │  │  │ - HTTPS: 443   │  0.0.0.0/0                   │      │     │
-│  │  │  │ - Grafana:3000 │  Custom IPs                  │      │     │
-│  │  │  │ - Prom: 9090   │  Custom IPs                  │      │     │
 │  │  │  └────────────────┘                              │      │     │
 │  │  └──────────────────────────────────────────────────┘      │     │
 │  └────────────────────────────────────────────────────────────┘     │
 │                                                                     │
 │  ┌────────────────┐                                                 │
-│  │  SSH Keys      │  ED25519 (auto-generated)                       │
-│  │  ~/.ssh/oceania│                                                 │
+│  │  SSH Keys      │  ED25519                                        │
 │  └────────────────┘                                                 │
 └─────────────────────────────────────────────────────────────────────┘
-
         │
         │ SSH + HTTPS
         ▼
@@ -177,7 +170,7 @@ Le projet combine :
          ▼
 ┌────────────────────────────────────────┐
 │  Étape 3/4: Configuration Ansible      │
-│  ├─ Installation Docker 29.0.0         │
+│  ├─ Installation Docker                │
 │  ├─ Installation Docker Compose        │
 │  ├─ Installation outils système        │
 │  ├─ Configuration utilisateurs         │
@@ -193,6 +186,7 @@ Le projet combine :
 │  ├─ Déploiement Node Exporter          │
 │  ├─ Déploiement cAdvisor               │
 │  ├─ Déploiement Loki                   │
+│  ├─ Déploiement Alloy                  │
 │  └─ Validation complète                │
 └────────────────────────────────────────┘
 ```
@@ -205,58 +199,54 @@ Le projet combine :
 
 | Composant | Version | Port | Description |
 |-----------|---------|------|-------------|
-| **Prometheus** | 3.7.3 | 9090 | Collecte et stockage des métriques |
-| **Grafana** | 12.2.1 | 3000 | Visualisation et dashboards |
-| **Alertmanager** | 0.29.0 | 9093 | Gestion des alertes |
-| **Node Exporter** | 1.10.2 | 9100 | Métriques système (CPU, RAM, Disk) |
-| **cAdvisor** | 0.53.0 | 8080 | Métriques des conteneurs Docker |
-| **Loki** | 3.5.8 | 3100 | Agrégation de logs |
-| **Alloy** | latest | - | Collecte de logs (remplace Promtail) |
+| **Prometheus** | latest | 9090 | Collecte et stockage des métriques |
+| **Grafana** | latest | 3000 | Visualisation et dashboards |
+| **Alertmanager** | latest | 9093 | Gestion des alertes |
+| **Node Exporter** | latest | 9100 | Métriques système (CPU, RAM, Disk) |
+| **cAdvisor** | latest | 8080 | Métriques des conteneurs Docker |
+| **Loki** | latest | 3100 | Agrégation de logs |
+| **Alloy** | latest | 12345 | Collecte de logs |
 
 ### Architecture Monitoring
 
 ```
-┌──────────────┐
-│   Système    │
-│   (Node)     │
-└──────┬───────┘
-       │ métriques
-       ▼
-┌──────────────┐     ┌──────────────┐
-│Node Exporter │     │  Conteneurs  │
-│    :9100     │     │   Docker     │
-└──────┬───────┘     └──────┬───────┘
-       │                    │
-       │              ┌─────▼──────┐
-       │              │  cAdvisor  │
-       │              │   :8080    │
-       │              └─────┬──────┘
-       │                    │
-       └────────┬───────────┘
-                │ métriques
-                ▼
-        ┌──────────────┐
-        │  Prometheus  │
-        │    :9090     │
-        └──────┬───────┘
-               │
-    ┌──────────┼──────────┐
-    │          │          │
-    ▼          ▼          ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│Grafana │ │ Alerts │ │  API   │
-│ :3000  │ └───┬────┘ └────────┘
-└────┬───┘     │
-     │         ▼
-     │  ┌──────────────┐
-     │  │Alertmanager  │
-     │  │    :9093     │
-     │  └──────────────┘
-     │
-     │  ┌──────────────┐
-     └──│     Loki     │
-        │    :3100     │
-        └──────────────┘
+    ÉTRIQUES                                            LOGS
+                    
+┌──────────────┐     ┌──────────────┐              ┌──────────────┐
+│   Système    │     │   Docker     │              │   Système    │
+│              │     │              │              │   Docker     │
+└──────┬───────┘     └──────┬───────┘              └──────┬───────┘
+       │                    │                             │
+       ▼                    ▼                             │ logs
+┌──────────────┐     ┌──────────────┐                     ▼
+│Node Exporter │     │  cAdvisor    │              ┌──────────────┐
+│    :9100     │     │    :8080     │              │    Alloy     │
+└──────┬───────┘     └──────┬───────┘              │   :12345     │
+       │                    │                      └──────┬───────┘
+       │    métriques       │                             │
+       └────────┬───────────┘                             │ push
+                │                                         ▼
+                ▼                                  ┌──────────────┐
+        ┌──────────────┐                           │     Loki     │
+        │  Prometheus  │                           │    :3100     │
+        │    :9090     │                           └──────┬───────┘
+        └──────┬───────┘                                  │
+               │                                          │
+               │ query                                    │ query
+               │         ┌────────────────────────────────┘
+               │         │
+               ▼         ▼
+            ┌──────────────┐
+            │   Grafana    │
+            │    :3000     │
+            └──────────────┘
+                   │
+                   │ alerts
+                   ▼
+            ┌──────────────┐
+            │ Alertmanager │
+            │    :9093     │
+            └──────────────┘
 ```
 
 ### Métriques Collectées
@@ -266,12 +256,14 @@ Le projet combine :
 - Mémoire : Utilisée, disponible, swap
 - Disque : Espace, I/O, inodes
 - Réseau : Bande passante, paquets, erreurs
+- ...
 
 **Conteneurs (cAdvisor)** :
 - CPU par conteneur
 - Mémoire par conteneur
 - Réseau par conteneur
 - I/O disque par conteneur
+- ...
 
 ### Alertes Pré-configurées
 
@@ -279,9 +271,38 @@ Le projet combine :
 |--------|-----------|-------|----------|
 | InstanceDown | up == 0 | 5 min | Critical |
 | ContainerDown | Conteneur absent | 5 min | Critical |
+| PrometheusTargetMissing | Target down | 5 min | Critical |
+| PrometheusConfigReloadFailed | Config reload failed | 5 min | Critical |
 | HighCPUUsage | CPU > 80% | 10 min | Warning |
 | HighMemoryUsage | RAM > 85% | 10 min | Warning |
 | DiskSpaceLow | Disque < 15% | 5 min | Warning |
+| HighDiskIOUtilization | I/O > 90% | 10 min | Warning |
+| InodesLow | Inodes < 10% | 5 min | Warning |
+| NetworkReceiveErrors | Erreurs réseau RX | 5 min | Warning |
+| NetworkTransmitErrors | Erreurs réseau TX | 5 min | Warning |
+| ContainerRestartLoop | > 3 restarts/h | 5 min | Warning |
+| ContainerHighCPU | Container CPU > 80% | 10 min | Warning |
+| ContainerHighMemory | Container RAM > 85% | 10 min | Warning |
+| PrometheusTooManyRestarts | > 2 restarts/h | 5 min | Warning |
+
+### Dashboards Grafana Pré-configurés
+
+| Dashboard | Description |
+|-----------|-------------|
+| **Node Exporter - Host Metrics** | CPU, RAM, Disk, Network, Load Average |
+| **Docker Containers** | CPU, RAM, Network par conteneur, Restarts |
+| **Monitoring Stack Health** | Status des services, Scrape metrics, Alertes |
+| **Logs Explorer** | Logs Docker via Loki, filtrage par conteneur |
+
+### Recording Rules Prometheus
+
+Des recording rules sont pré-configurées pour optimiser les requêtes :
+- `instance:node_cpu_utilization:percent` - CPU usage en %
+- `instance:node_memory_utilization:percent` - RAM usage en %
+- `instance:node_filesystem_utilization:percent` - Disk usage en %
+- `container:cpu_utilization:percent` - CPU conteneur en %
+- `container:memory_utilization:percent` - RAM conteneur en %
+- `container:restarts:count24h` - Nombre de restarts sur 24h
 
 ---
 
@@ -299,7 +320,7 @@ ansible --version  # >= 2.9
 # Installation: pip install ansible
 
 # AWS CLI
-aws --version
+aws --version # >= 2.0
 # Installation: https://aws.amazon.com/cli/
 ```
 
@@ -309,7 +330,7 @@ aws --version
 aws configure
 # AWS Access Key ID: VOTRE_ACCESS_KEY
 # AWS Secret Access Key: VOTRE_SECRET_KEY
-# Default region: us-east-1
+# Default region: votre région
 # Default output format: json
 
 # Tester
@@ -438,6 +459,10 @@ Services de monitoring:
   Prometheus:    http://44.x.x.x:9090
   Grafana:       http://44.x.x.x:3000
   Alertmanager:  http://44.x.x.x:9093
+  Node Exporter: http://44.x.x.x:9100/metrics
+  cAdvisor:      http://44.x.x.x:8080
+  Loki:          http://44.x.x.x:3100
+  Alloy:         http://44.x.x.x:12345
 
 Pour gérer l'instance:
   ./oceania credentials - Afficher les logins/passwords
@@ -548,10 +573,7 @@ Génère un nouveau mot de passe fort, met à jour Grafana et sauvegarde dans `.
     "user": "admin",
     "password": "XyZ123AbC456DeF789GhI012"
   },
-  "prometheus": {
-    "url": "http://44.x.x.x:9090"
-  }
-}
+...
 ```
 
 **Sécurité** :
@@ -573,7 +595,8 @@ Génère un nouveau mot de passe fort, met à jour Grafana et sauvegarde dans `.
 | **Alertmanager** | http://IP:9093 | - | Gestion des alertes |
 | **Node Exporter** | http://IP:9100/metrics | - | Métriques système brutes |
 | **cAdvisor** | http://IP:8080 | - | Métriques conteneurs |
-| **Loki** | http://IP:3100 | - | API logs |
+| **Loki** | http://IP:3100 | - | Stockage et API logs |
+| **Alloy** | http://IP:12345 | - | Collecte de logs (Web UI) |
 
 ### Première Connexion Grafana
 
@@ -594,7 +617,13 @@ Génère un nouveau mot de passe fort, met à jour Grafana et sauvegarde dans `.
 
 ### Dashboards Recommandés
 
-Importer depuis Grafana.com :
+4 dashboards sont automatiquement provisionnés :
+- **Node Exporter - Host Metrics** : Métriques système complètes
+- **Docker Containers** : Métriques conteneurs
+- **Monitoring Stack Health** : Santé de la stack
+- **Logs Explorer** : Exploration des logs via Loki
+
+Pour importer des dashboards supplémentaires depuis Grafana.com :
 
 ```bash
 # Dans Grafana: Menu → Dashboards → Import
@@ -708,9 +737,9 @@ root_volume_size  = 100
 
 ```yaml
 # ansible/inventory/group_vars/monitoring.yml
-# Versions
-prometheus_version: "v3.7.3"
-grafana_version: "12.2.1"
+# Versions (utilise latest par défaut)
+prometheus_version: "latest"
+grafana_version: "latest"
 
 # Credentials
 grafana_admin_user: "admin"
@@ -1033,22 +1062,42 @@ OceaniaWatch/
 │           ├── tasks/main.yml
 │           ├── handlers/main.yml
 │           ├── templates/
+│           │   ├── docker-compose.yml.j2
+│           │   ├── prometheus.yml.j2
+│           │   ├── alert-rules.yml.j2
+│           │   ├── recording-rules.yml.j2
+│           │   ├── alloy-config.alloy.j2
+│           │   └── ...
 │           └── files/
+│               └── dashboards/
+│                   ├── node-exporter.json
+│                   ├── docker-containers.json
+│                   ├── monitoring-health.json
+│                   └── logs-explorer.json
 │
-├── monitoring/
-│   ├── docker-compose.yml           # Orchestration globale
+├── monitoring/                          # Structure déployée sur le serveur
+│   ├── docker-compose.yml               # Orchestration globale
 │   ├── prometheus/
-│   │   └── docker-compose.yml
+│   │   ├── docker-compose.yml
+│   │   ├── prometheus.yml
+│   │   └── rules/
+│   │       ├── alerts.yml
+│   │       └── recording.yml
 │   ├── grafana/
-│   │   └── docker-compose.yml
+│   │   ├── docker-compose.yml
+│   │   ├── dashboards/
+│   │   └── provisioning/
 │   ├── alertmanager/
 │   │   └── docker-compose.yml
 │   ├── node-exporter/
 │   │   └── docker-compose.yml
 │   ├── cadvisor/
 │   │   └── docker-compose.yml
-│   └── loki/
-│       └── docker-compose.yml
+│   ├── loki/
+│   │   └── docker-compose.yml
+│   └── alloy/
+│       ├── docker-compose.yml
+│       └── alloy-config.alloy
 │
 └── .backups/                        # Sauvegardes automatiques
 ```
@@ -1127,22 +1176,26 @@ OceaniaWatch DevOps Team
 ## 🎯 Prochaines Étapes
 
 ### Court Terme
-1. ✅ Tester le déploiement complet
-2. ✅ Importer dashboards Grafana
-3. ✅ Configurer webhooks Alertmanager
-4. ✅ Restreindre accès réseau
+1. ✅ Dashboards Grafana pré-configurés
+2. ✅ Alertes avancées (15 règles)
+3. ✅ Recording rules Prometheus
+4. ✅ Collecte de logs avec Alloy
+5. 🔄 Configurer webhooks Alertmanager
+6. 🔄 Restreindre accès réseau
 
 ### Moyen Terme
 1. 🔄 Ajouter Grafana Tempo (tracing)
 2. 🔄 Intégrer AWS CloudWatch
 3. 🔄 Reverse proxy (Traefik/Nginx)
 4. 🔄 HTTPS avec Let's Encrypt
+5. 🔄 Authentification externe (LDAP, OAuth)
 
 ### Long Terme
 1. 🚀 Multi-région
 2. 🚀 Auto Scaling Group + ALB
 3. 🚀 Kubernetes (EKS)
 4. 🚀 GitOps (ArgoCD/Flux)
+5. 🚀 Gestion des alerte de N1 via IA.
 
 ---
 
