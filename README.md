@@ -210,7 +210,7 @@ Le projet combine :
 ### Architecture Monitoring
 
 ```
-    ÉTRIQUES                                            LOGS
+    MÉTRIQUES                                            LOGS
                     
 ┌──────────────┐     ┌──────────────┐              ┌──────────────┐
 │   Système    │     │   Docker     │              │   Système    │
